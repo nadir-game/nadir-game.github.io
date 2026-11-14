@@ -1,0 +1,1473 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Nadir</title>
+<style>
+/* ============ THEME ============
+   Monochrome: every colour is a token. The dark values appear twice on purpose:
+   once for the OS preference (unless light is forced), once for the explicit dark toggle. */
+:root{--bg:#000;--fg:#fff;--dim:#8a8a8a;--mem:#3a3a3a;--wall:#fff;--you:#fff;--pot:#2f7fff;--gold:#ffe800;--st:#fff;--door:#b5651d;--gear:#8a8a8a;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} /* dark on every device (no light/dark switching) */
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;padding:12px;background:var(--bg);color:var(--fg);font:14px/1.35 ui-monospace,Menlo,Consolas,monospace;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+
+[hidden]{display:none!important}
+
+/* ============ LAYOUT: one column, in DOM order ============ */
+#wrap{display:flex;flex-direction:column;gap:8px;max-width:640px;margin:0 auto}
+#game{display:flex;flex-direction:column;gap:8px}
+pre{margin:0}
+
+/* ============ MAP: one <i> per tile, 1ch wide so columns line up ============ */
+#map,#egrid{font-size:16px;line-height:1.1;align-self:center;overflow:hidden;white-space:pre} /* font-size is set by fit(); #egrid is the editor's copy */
+#map i,#egrid i{font-style:normal;display:inline-block;width:1ch;text-align:center;vertical-align:top}
+.you{color:var(--you);font-weight:bold}
+.mob{color:var(--fg);font-weight:bold}
+.hurt{color:#f33} /* a creature that was just hit */
+.pot{color:var(--pot)}.gold{color:var(--gold)}.door{color:var(--door)}.gear{color:var(--gear)}.wall{color:var(--wall)}
+.floor{color:var(--dim)}.stairs{color:var(--st);font-weight:bold}
+.mem{color:var(--mem)} /* remembered tile, out of sight */
+#log{white-space:pre-wrap;min-height:4.2em}
+
+/* ============ BUTTONS: plain text in [ ] ============ */
+button{height:40px;background:none;color:var(--fg);border:0;padding:0;font:inherit;white-space:pre;cursor:pointer;touch-action:manipulation}
+button:active{background:var(--fg);color:var(--bg)}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.pad{display:grid;grid-template-columns:3fr 1.7fr;gap:4px;font-size:18px} /* d-pad | action buttons */
+.dpad,.acts{display:grid;gap:4px}
+.dpad{grid-template-columns:repeat(3,1fr)}
+.pad button{height:48px}
+.acts{font-size:14px;grid-auto-rows:1fr} /* 4 buttons share the d-pad's height */
+.acts button{height:auto}
+.help{color:var(--dim);font-size:12px;margin-top:10px}
+
+/* ============ ASCII BOX (built by box() in the script) ============
+   .hz = top/bottom edge "+----+", .vt = left/right edge (a column of "|"), .bd = content.
+   The edges are plain text clipped by overflow:hidden, so a box fits any width. */
+.bx{display:flex;flex-direction:column;min-width:0}
+.hz,.vt{font-size:min(14px,3vw);line-height:1;white-space:pre}
+.hz{display:flex}
+.ln{flex:1;min-width:0;overflow:hidden}
+.mid{display:flex;flex:1}
+.vt{position:relative;width:1ch;overflow:hidden}
+.vt span{position:absolute;top:0;left:0}
+.bd{flex:1;min-width:0;padding:6px 2px;display:flex;flex-direction:column;align-items:center}
+
+/* ============ SEED ROW ============ */
+.sd{display:flex;gap:8px;align-items:center}
+.sd .bx{flex:1}
+.sd .bd{padding:0 4px;align-items:stretch}
+.sd input{min-width:0;height:28px;box-sizing:border-box;background:none;color:var(--fg);border:0;border-radius:0;padding:0;font:16px ui-monospace,Menlo,Consolas,monospace} /* 16px stops iOS zoom on focus */
+.sd input::placeholder{color:var(--dim)}
+.sd button{padding:0 4px}
+
+/* ============ REWARD / SHOP CARDS ============ */
+#cards{width:100%}
+.ct{text-align:center;font-weight:bold;margin-bottom:10px}
+.row{display:flex;gap:10px;justify-content:center}
+.card{flex:1 1 0;min-width:0;text-align:center;cursor:pointer}
+.card .nm{font-weight:bold;margin-bottom:6px}
+.card pre{display:inline-block;text-align:left;font-size:min(13px,3vw);line-height:1.15;min-height:11.5em;margin-bottom:6px}
+.card .pv{color:var(--dim);font-size:12px;margin-top:6px}
+.card:not(.off):hover{background:var(--fg);color:var(--bg)}
+.card:not(.off):hover .pv{color:inherit}
+.card.off{opacity:.45;cursor:not-allowed} /* can't afford / maxed / already held */
+.sh{max-width:calc((100% - 10px*(var(--per) - 1))/var(--per))} /* --per = cards per shop page, so a lone card keeps its width */
+.sh pre{min-height:12.7em} /* shop art area, sized for the tallest art (ruby) */
+.tag{margin-top:auto;padding-top:8px;font-weight:bold} /* price sticks to the card bottom */
+.gd{text-align:center;margin-bottom:10px;font-weight:bold}
+.gd .bd{padding:2px}
+.bn{display:inline-block;text-align:left;font-size:min(13px,3vw);line-height:1.1;margin:0}
+.leave{margin-top:12px;text-align:center;font-weight:bold;padding:8px;cursor:pointer}
+.leave:hover{background:var(--fg);color:var(--bg)}
+.hint{color:var(--dim);font-size:12px;text-align:center;margin-top:8px}
+
+/* ============ MAIN MENU ============ */
+#menu{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding-top:8px}
+.title{font-size:min(18px,calc((100vw - 32px)/19));line-height:1.1;font-weight:bold} /* 30 columns wide */
+.tl{color:var(--dim);letter-spacing:.08em}
+.battle{color:var(--dim);white-space:pre;max-width:100%;overflow:hidden;font-size:min(18px,calc((100vw - 32px)/19));line-height:1.1} /* battlement divider: same 30 columns as the title */
+.menubox{width:min(100%,320px)}
+.menubox .bd{align-items:stretch;padding:8px 10px}
+.mh{font-weight:bold;text-align:left}
+.rule{color:var(--dim);white-space:pre;overflow:hidden;text-align:left;margin-bottom:4px}
+.mi{display:flex;justify-content:space-between;width:100%;height:36px;align-items:center;padding:0 4px;text-align:left}
+.mi:hover{background:var(--fg);color:var(--bg)}
+.how{margin:0;text-align:left;font-size:12px;white-space:pre-wrap}
+#how,#mseed,#mbox{width:min(100%,320px)}
+.nav{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:12px;font-weight:bold} /* shop page arrows */
+button:disabled{opacity:.35;cursor:default}
+button:disabled:active{background:none;color:var(--fg)}
+
+/* ============ DEPTH EDITOR ============ */
+#edit{display:flex;flex-direction:column;gap:8px}
+#egrid{touch-action:none;-webkit-user-select:none;user-select:none;cursor:crosshair} /* touch-action:none: dragging paints instead of scrolling the page */
+.tools{display:grid;grid-template-columns:repeat(7,1fr);gap:4px} /* tool palette: 7 columns */
+.tools button{font-size:min(14px,3.6vw)} /* keeps 7 columns inside narrow phones */
+.erow{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.eacts{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+button.on{background:var(--fg);color:var(--bg)} /* selected tool / open panel */
+.ebox .bd{align-items:stretch;padding:6px 8px;gap:4px}
+.ebox textarea{width:100%;height:5.4em;box-sizing:border-box;background:none;color:var(--fg);border:0;border-radius:0;padding:0;resize:none;font:16px/1.35 ui-monospace,Menlo,Consolas,monospace;word-break:break-all} /* 16px stops iOS zoom on focus */
+.dim{color:var(--dim);font-size:12px}
+#emsg,#cmsg{min-height:2.7em;white-space:pre-wrap}
+
+/* ============ COMMUNITY ============ */
+#comm{display:flex;flex-direction:column;gap:8px}
+.ctabs{display:flex;flex-wrap:wrap;gap:4px}
+.ctabs button{flex:1 1 auto}
+.cacts{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.cl{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;height:auto;min-height:44px;padding:6px 4px;text-align:left;white-space:normal}
+.cl:hover,.cl.cur{background:var(--fg);color:var(--bg)}
+.cl:hover .dim,.cl.cur .dim{color:inherit}
+.cp{margin:0;font-size:min(13px,3.2vw);line-height:1.05;white-space:pre;overflow:hidden;align-self:center;max-width:100%}
+.ebox input[type=text]:focus{outline:0;background:var(--fg);color:var(--bg)}
+.cf{margin:0;line-height:1;white-space:pre;overflow:hidden;align-self:center;max-width:100%}
+.ebox input[type=text]{width:100%;height:28px;box-sizing:border-box;background:none;color:var(--fg);border:0;border-radius:0;padding:0;font:16px ui-monospace,Menlo,Consolas,monospace} /* 16px stops iOS zoom on focus */
+</style>
+<div id="wrap">
+<div id="menu">
+<pre class="title" id="title" role="img" aria-label="Nadir"></pre>
+<div class="tl">-- an ASCII original. --</div>
+<div class="battle" id="wall" aria-hidden="true"></div>
+<div id="mbox"></div>
+<div id="how" hidden></div>
+<div class="sd" id="mseed"></div>
+<div class="hint" id="mmsg"></div>
+<div class="hint">Arrow Keys / WASD: move &nbsp; ENTER: select &nbsp; or tap</div>
+</div>
+<div id="edit" hidden>
+<pre id="ehead"></pre>
+<div class="erow" id="efl"></div>
+<pre id="egrid" role="img" aria-label="Floor map: tap or drag to paint"></pre>
+<div class="erow" id="epan"></div>
+<div class="tools" id="etools"></div>
+<div id="eset" hidden></div>
+<div id="ecode" hidden></div>
+<pre class="dim" id="emsg"></pre>
+<div class="eacts" id="eacts"></div>
+<div class="help">Tap or drag on the map to paint with the lit tool: <b>#</b> wall, <b>.</b> floor (BRUSH sets its size), <b>&gt;</b> stairs, <b>@</b> your start, <b>!</b> potion, <b>$</b> gold, <b>(</b> key or lockpick, <b>+</b> door, <b>L</b> locked door (shown as L here, as + in play; each lock needs a <b>(</b> you can reach first), <b>x</b> erase, other letters place mobs. The outer ring stays rock. On the last floor the stairs end the run.<br>SETUP rolls random mobs and items every run (<b>s</b> comes as a pack of 4). TEST plays this floor, PLAY the whole dungeon, SHARE sends it to the community.</div>
+</div>
+<div id="comm" hidden>
+<pre id="chead">COMMUNITY LEVELS</pre>
+<div class="ctabs" id="ctabs"></div>
+<div id="cbody"></div>
+<pre class="dim" id="cmsg"></pre>
+<div class="cacts" id="cacts"></div>
+<div class="help"><b>OFFICIAL</b> levels ship with the game. <b>COMMUNITY</b> levels are shared by players once a moderator approves them. Send yours with SHARE (here under MINE, or in the DEPTH EDITOR). Reports and bad levels are removed by moderators. <b>CODE</b> needs no app or account: paste a friend's level code to play it, or copy yours to send it.</div>
+</div>
+<div id="game" hidden>
+<pre id="stats"></pre>
+<pre id="map"></pre>
+<div id="cards" hidden></div>
+<pre id="log" aria-live="polite"></pre>
+<div class="pad" id="pad"></div>
+<div class="sd" id="sdrow"></div>
+<div class="help">Move: arrows / WASD / hjklyubn. Bump to attack. <b>.</b> wait, <b>&gt;</b> descend, <b>1</b>/<b>2</b> pick/buy (shop: <b>&lt;</b>/<b>&gt;</b> pages, <b>Enter</b> leaves), <b>P</b> potion, <b>R</b> restart, <b>M</b> menu.<br><span class="pot">!</span> potion | <span class="gold">$</span> gold | <span class="door">+</span> door | <span class="gear">(</span> key | <span class="stairs">&gt;</span> stairs | <span class="mob">r g o T h M s</span> foes</div>
+</div>
+</div>
+<script>
+/* ===================================================================
+   NADIR - single-file ASCII roguelike, no dependencies.
+   Flow: MENU -> PLAY (map) -> stand on '>' and press > -> REWARD (pick 1 of 2) -> SHOP -> next floor.
+         MENU -> DEPTH EDITOR: build your own floors, then TEST / PLAY them (same loop; the last stairs win).
+         MENU -> COMMUNITY: play the official levels or levels other players shared; SHARE sends yours for review.
+         A minotaur that reaches you opens PARLEY (pay the toll with Y, or fight with N) instead of attacking.
+   Sections: 1 data/tuning  2 seeded RNG  3 state  4 level generation (4b custom floors)  5 sight
+             6 drawing  7 turns (player + mobs)  8 reward, shop and parley screens  9 input  10 boot
+             main menu  11 depth editor  12 community
+   Rules:    everything on screen is ASCII (box() draws the frames); only the WALLS glyphs are not.
+             Keep the order of R() calls in genRandom() stable, or existing seeds give different dungeons.
+   =================================================================== */
+
+/* ---- 1. DATA / TUNING ---- */
+const SHOP_PAGE=2;                             // shop cards per page; more items just add pages
+const SIGHT=8,CANDLE_SIGHT=SIGHT*1.2;          // view radius in tiles; a candle adds 20%
+const HEAL=8,HEART_HP=8,GRIND=10,MAX_DMG=120;  // potion heal; Heart reward (+max HP and +HP); Grindstone +dmg%; dmg% cap
+// Mob glyph -> name, base HP, max hit. Extra HP per floor is added in gen().
+// Optional: steal = gold taken per hit (+depth), instead of HP damage; dodge = tenths chance your attack misses;
+// hunter = tracks you through walls without sight and demands a toll before it fights (see enemies(), parley());
+// swarm = only spawns in packs (see gen()): roams together until one is seen, then the whole pack hunts you.
+const MOBS={r:{name:'rat',hp:3,dmg:2},g:{name:'goblin',hp:6,dmg:3},o:{name:'orc',hp:12,dmg:5},T:{name:'troll',hp:20,dmg:7},
+ h:{name:'halfling',hp:6,dmg:0,steal:2,dodge:4},
+ M:{name:'minotaur',hp:18,dmg:6,hunter:1},
+ b:{name:'beserker',hp:5,dmg:6},
+ f:{name:'fanatic',hp:4,dmg:8},
+ s:{name:'skeleton',hp:3,dmg:3,swarm:1}};
+// DOORS and KEYS. Map tiles: '+' door (opens when you walk in), 'L' locked door (drawn as '+', see SHOWN).
+// SOLID tiles stop walking, OPAQUE tiles stop sight. A locked door is solid for everyone (mobs too); a closed door only blocks sight.
+// genRandom() tries DOOR_COUNT doors per floor, LOCK_RATE/10 of them locked, and drops one '(' per lock where you can reach it.
+const DOOR_COUNT=6,LOCK_RATE=3;
+const SOLID='#L',OPAQUE='#+L',SHOWN={L:'+'};
+// What a '(' can turn out to be when picked up. Every kind opens one locked door; add a name here for a new kind.
+const GEAR=['key','lockpick'];
+// Minotaurs are placed separately from the normal spawn pool: from MINO_DEPTH down, each of up to MINO_MAX slots
+// fills with a MINO_RATE/10 chance. A minotaur always hunts you; when it reaches you it asks minoToll(depth) gold.
+const MINO_DEPTH=5,MINO_MAX=2,MINO_RATE=4;
+const minoToll=d=>10+5*d;                       // 35 gold at depth 5, 60 at depth 10
+// Skeletons never come from the normal pool. From SKEL_DEPTH down, each of SKEL_PACKS slots fills with a
+// SKEL_RATE/10 chance with a pack of SKEL_PACK skeletons in one room. Idle members stay within PACK_RADIUS of their leader.
+const SKEL_DEPTH=5,SKEL_PACKS=3,SKEL_RATE=4,SKEL_PACK=4,PACK_RADIUS=2;
+// Spawn pool by depth: a random character is picked, so repeats make a mob more likely.
+const mobPool=d=>d<3?'rrg':d<5?'rggohfb':d<8?'ggoohfb':'goooThfb';
+// Key -> [dx,dy]. Arrows, WASD, vi keys (hjkl) and yubn diagonals; '.' or space waits.
+const K={ArrowUp:[0,-1],w:[0,-1],k:[0,-1],ArrowDown:[0,1],s:[0,1],j:[0,1],ArrowLeft:[-1,0],a:[-1,0],h:[-1,0],ArrowRight:[1,0],d:[1,0],l:[1,0],y:[-1,-1],u:[1,-1],b:[-1,1],n:[1,1],'.':[0,0],' ':[0,0]};
+
+// ASCII art. Keys are used by showReward() and ITEMS below.
+const ART={
+grind:String.raw`    _.-'''-._
+  .'  .---.  '.
+ /   /     \   \
+|   |   O   |   |--o
+ \   \     /   /
+  '.  '---'  .'
+    '-.___.-'
+   /|       |\
+  |_|_______|_|`,
+heart:String.raw`   .--.   .--.
+  /    \ /    \
+ |      V      |
+  \           /
+   \    +    /
+    \       /
+     \     /
+      \   /
+       \ /
+        V`,
+ruby:String.raw`   _______
+  /\     /\
+ /  \   /  \
+/____\_/____\
+\    / \    /
+ \  /   \  /
+  \/     \/
+   \     /
+    \   /
+     \ /
+      V`,
+potion:String.raw`    [_]
+    | |
+   /   \
+  /  ~  \
+ |  ~~~  |
+ | ~~~~~ |
+ '._____.'`,
+candle:String.raw`      )\
+     (_/
+.-#-|  |-#-.
+  __|__|_.#'
+.'  |  |   .
+'#--|  |-#'
+    |__|`,
+minotaur:String.raw`     /(     )\
+.--.( ${'`'}.___.' ).--.
+${'`'}._ ${'`'} _     _ ' _.'
+   ${'`'}|(@\   /@)|'
+    |  |   |  |
+     \ \   / /
+     |\|   |/|
+     | (.".) |
+    .'       ${'`'}.`,
+title:String.raw` _   _    _    ____ ___ ____  
+| \ | |  / \  |  _ \_ _|  _ \ 
+|  \| | / _ \ | | | | || |_) |
+| |\  |/ ___ \| |_| | ||  _ < 
+|_| \_/_/   \_\____/___|_| \_\
+`,
+sword:String.raw`   ^
+  | |
+  | |
+  | |
+  | |
+  | |
+  | |
+==)_(==
+   #
+   #
+   O`,
+cross:String.raw`   .-.
+ __| |__
+|__   __|
+   | |
+   | |
+   | |
+   '-'`,
+shop:String.raw` ____  _   _  ___  ____
+/ ___|| | | |/ _ \|  _ \
+\___ \| |_| | | | | |_) |
+ ___) |  _  | |_| |  __/
+|____/|_| |_|\___/|_|`};
+
+/* Shop catalog. To add an item: add an entry here and its art to ART. The shop pages through it SHOP_PAGE at a time;
+   keys 1..SHOP_PAGE buy the items on the current page.
+   own() = how many you hold, max = optional carry limit, buy() = effect (gold is charged by buy()). */
+const ITEMS=[
+ {name:'RUBY',art:'ruby',price:30,info:'+3 HP after every kill. Stackable.',own:()=>p.rubies,
+  buy(){p.rubies++;say(`You buy a ruby. Each kill heals ${3*p.rubies} HP.`)}},
+ {name:'POTION',art:'potion',price:10,info:`Heals ${HEAL} HP. Drink it from the Potion button.`,own:()=>p.potions,
+  buy(){p.potions++;say(`You buy a potion. You hold ${p.potions}.`)}},
+ {name:'CANDLE',art:'candle',price:15,info:'+20% sight for one floor. Foes spot you sooner. Max 1.',own:()=>p.candle,max:1,
+  buy(){p.candle=1;say('You buy a candle. It burns until you descend.')}},
+ // Cross: one-shot death save, kept until used (see enemies()). Revive at half HP with 3 turns of immunity.
+ {name:'CROSS',art:'cross',price:100,info:'Cheats death once: revive at half HP, 3 safe turns. Max 1.',own:()=>p.cross,max:1,
+  buy(){p.cross=1;say('You buy a cross. It will save you once.')}},
+ // Sword: permanent. Same damage, but your attack hits every foe in the 8 tiles around you (see act()).
+ {name:'SWORD',art:'sword',price:60,info:'Your attack hits all 8 tiles around you. Same damage. Max 1.',own:()=>p.sword,max:1,
+  buy(){p.sword=1;say('You buy a sword. Your attacks now sweep every adjacent foe.')}}
+];
+
+/* ---- 2. SEEDED RNG ----
+   rnd() -> float in [0,1) (mulberry32). R(n) -> int in [0,n). sow(str) seeds it.
+   gen() reseeds with seed+depth, so each floor depends only on the seed and depth, never on how you played. */
+let S;
+const rnd=()=>{S=S+0x6D2B79F5|0;let t=Math.imul(S^S>>>15,1|S);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const R=n=>rnd()*n|0;
+const sow=s=>{S=2166136261;for(let i=0;i<s.length;i++)S=Math.imul(S^s.charCodeAt(i),16777619)};
+const $=id=>document.getElementById(id);
+
+/* ---- 3. STATE ---- */
+const PLAY=0,REWARD=1,SHOP=2,PARLEY=3,MENU=4,EDIT=5,COMM=6;  // mode = which screen is active
+let seed,W,H,VW=23,VH=13;               // seed text, map size and viewport size (tiles)
+let map,seen,vis,mon,items;             // map[y][x]: '#' wall '.' floor '>' stairs | seen/vis: 0|1 grids (explored / in sight now)
+                                        // mon: [{x,y,t,hp,awake}] | items: {'x,y':'!' potion | '$' gold | '(' key or lockpick}
+let menuSel=0,howOpen=0,quitArmed=0;   // main menu cursor, rules panel open, 'abandon run?' confirm armed
+let custom=null,firstFloor=1,won=0,back='';   // custom = floors of the custom dungeon being played (null = random dungeon) | floor it starts on | run finished by winning | where MENU goes back to: '' menu, 'edit' editor, 'comm' community
+let p,depth,gold,turn,msgs,dead,mode,deal,shopPage; // deal = the minotaur you are bargaining with; shopPage = shop page (0-based) | p: {x,y,hp,maxHp,dmg(% of base),rubies,potions,candle(0|1),cross(0|1),immune(turns left),sword(0|1)}
+
+// Sound effects: tiny WebAudio beeps picked from the log line, so every event that says something also sounds.
+// A note is [Hz, seconds, wave (default square), Hz slide]; notes play one after another.
+const SFX=[
+ [/^You hit/,[[220,.07,'square',-120]]],
+ [/^You miss/,[[300,.1,'sine',-150]]],
+ [/^You slay/,[[260,.06],[520,.12]]],
+ [/ hits you/,[[110,.16,'sawtooth',-50]]],
+ [/ misses\.$/,[[200,.06,'triangle',-80]]],
+ [/ steals /,[[700,.05],[500,.08]]],
+ [/door\.$/,[[160,.08,'square',60],[220,.1,'square',90]]],
+ [/^The door is locked/,[[120,.1]]],
+ [/^You unlock/,[[600,.05],[900,.1]]],
+ [/^You find a/,[[1000,.05],[1400,.08]]],
+ [/^You pocket/,[[900,.05],[1300,.09]]],
+ [/^You drink/,[[400,.08,'sine',200],[600,.1,'sine',300]]],
+ [/^You died/,[[200,.2,'sawtooth',-100],[120,.3,'sawtooth',-60]]],
+ [/cross shatters/,[[500,.1,'sine'],[800,.1,'sine'],[1100,.2,'sine']]],
+ [/^You escape/,[[400,.1],[500,.1],[600,.1],[800,.25]]],
+ [/^You descend/,[[300,.1,'triangle'],[220,.1,'triangle'],[150,.15,'triangle']]],
+ [/^You buy/,[[800,.06],[1200,.1]]],
+ [/^Not enough/,[[150,.12]]],
+ [/^The (grindstone|heart)/,[[500,.08,'triangle'],[750,.12,'triangle']]],
+ [/roars/,[[90,.4,'sawtooth',-30]]]];
+let au;
+function sfx(t){
+ const n=(SFX.find(([r])=>r.test(t))||[])[1];if(!n)return;
+ try{
+  au=au||new AudioContext();if(au.state=='suspended')au.resume();
+  let at=au.currentTime;
+  for(const[f,d,w='square',sl=0]of n){
+   const o=au.createOscillator(),g=au.createGain();
+   o.type=w;o.frequency.setValueAtTime(f,at);o.frequency.linearRampToValueAtTime(Math.max(20,f+sl),at+d);
+   g.gain.setValueAtTime(.06,at);g.gain.exponentialRampToValueAtTime(.0001,at+d);
+   o.connect(g);g.connect(au.destination);o.start(at);o.stop(at+d);at+=d*.8;
+  }
+ }catch(e){}                                     // no audio here: stay silent
+}
+function say(t){sfx(t);msgs.push(t);if(msgs.length>3)msgs.shift()}  // the log shows the last 3 lines
+
+// ASCII frame around html h: "+--+" top/bottom, "|" sides. c = extra classes, a = extra attributes (click targets live here).
+function box(h,c='',a=''){const v='<span class="vt"><span>'+'|\n'.repeat(80)+'</span></span>',z='<div class="hz"><span>+</span><span class="ln">'+'-'.repeat(160)+'</span><span>+</span></div>';return`<div class="bx ${c}" ${a}>${z}<div class="mid">${v}<div class="bd">${h}</div>${v}</div>${z}</div>`}
+
+function init(s){
+ seed=s||Math.random().toString(36).slice(2,8);   // blank seed -> random one
+ $('cards').hidden=1;$('map').hidden=0;
+ p={x:0,y:0,hp:20,maxHp:20,dmg:100,rubies:0,potions:0,candle:0,cross:0,immune:0,sword:0,gear:[]};   // gear = the keys and lockpicks you carry, by name
+ mode=PLAY;depth=custom?firstFloor:1;gold=0;turn=0;msgs=[];dead=0;won=0;quitArmed=0;
+ gen();say('You enter the dungeon. Find the stairs (>).');fov();draw();
+}
+
+/* ---- 4. LEVEL GENERATION ----
+   The map is a grid of cells with one room per cell. Rooms are joined by a random spanning tree
+   (so every room is reachable) plus a few extra corridors for loops. */
+// Carve an L-shaped corridor: horizontal leg first, then vertical.
+function tunnel(x,y,tx,ty){while(x!=tx){x+=Math.sign(tx-x);map[y][x]='.'}while(y!=ty){y+=Math.sign(ty-y);map[y][x]='.'}}
+// Random empty floor tile in room r (gives up after 30 tries and returns the last pick).
+function freeTile(r){let x,y,k=0;do{x=r.x+R(r.w);y=r.y+R(r.h);k++}while(k<30&&(map[y][x]!='.'||items[x+','+y]||mon.some(m=>m.x==x&&m.y==y)||(x==p.x&&y==p.y)));return[x,y]}
+function genRandom(){
+ sow(seed+':'+depth);                           // per-floor seed
+ const CW=17,CH=13,GC=4+R(3),GR=3+R(2);         // GC x GR cells, each CW x CH tiles
+ W=CW*GC;H=CH*GR;
+ map=Array.from({length:H},()=>Array(W).fill('#'));
+ seen=Array.from({length:H},()=>Array(W).fill(0));
+ mon=[];items={};
+ // 1. one random room per cell (rooms[] is row-major, index = row*GC+col)
+ const rooms=[];
+ for(let j=0;j<GR;j++)for(let i=0;i<GC;i++){
+  const w=5+R(CW-8),h=4+R(CH-7),x=i*CW+2+R(CW-3-w),y=j*CH+2+R(CH-3-h);
+  for(let a=y;a<y+h;a++)for(let b=x;b<x+w;b++)map[a][b]='.';
+  rooms.push({x,y,w,h,i,j,cx:x+(w>>1),cy:y+(h>>1)});
+ }
+ // 2. corridors. Same-row pairs start at a, other pairs at b: this decides where the corridor bends.
+ const link=(a,b)=>a.j==b.j?tunnel(a.cx,a.cy,b.cx,b.cy):tunnel(b.cx,b.cy,a.cx,a.cy);
+ // random depth-first walk over the cells = spanning tree
+ const done=new Set(),stk=[R(rooms.length)];done.add(stk[0]);
+ while(stk.length){
+  const c=stk[stk.length-1],ci=c%GC,cj=c/GC|0;
+  const nbrs=[[1,0],[-1,0],[0,1],[0,-1]].map(([a,b])=>[ci+a,cj+b]).filter(([a,b])=>a>=0&&b>=0&&a<GC&&b<GR&&!done.has(b*GC+a));
+  if(!nbrs.length){stk.pop();continue}           // dead end: backtrack
+  const[a,b]=nbrs[R(nbrs.length)],n=b*GC+a;
+  done.add(n);stk.push(n);link(rooms[c],rooms[n]);
+ }
+ // extra corridors (20% per neighbouring pair) so the dungeon has loops
+ for(let j=0;j<GR;j++)for(let i=0;i<GC;i++){
+  if(i<GC-1&&!R(5))link(rooms[j*GC+i],rooms[j*GC+i+1]);
+  if(j<GR-1&&!R(5))link(rooms[j*GC+i],rooms[(j+1)*GC+i]);
+ }
+ // 3. start in a random room, stairs in the room farthest from it (in grid steps)
+ const start=rooms[R(rooms.length)],dist=r=>Math.abs(r.i-start.i)+Math.abs(r.j-start.j);
+ const last=rooms.reduce((m,r)=>dist(r)>dist(m)?r:m,start);
+ p.x=start.cx;p.y=start.cy;map[last.cy][last.cx]='>';
+ // 4. populate every room except the start: 1-2 mobs (+1 below depth 5), 60% chance of one item
+ const pool=mobPool(depth);
+ rooms.filter(r=>r!=start).forEach(r=>{
+  for(let n=1+R(2)+(depth>5?1:0);n--;){const[x,y]=freeTile(r),t=pool[R(pool.length)];mon.push({x,y,t,hp:MOBS[t].hp+(depth>>1)})}
+  if(R(5)<3){const[x,y]=freeTile(r);items[x+','+y]=R(2)?'!':'$'}
+ });
+ // 5. minotaurs: rolled after everything else so adding them leaves the rest of the floor unchanged.
+ //    Only in rooms at least 2 grid steps from the start room, so none begins on top of you.
+ if(depth>=MINO_DEPTH){
+  const far=rooms.filter(r=>dist(r)>=2);
+  for(let n=0;n<MINO_MAX;n++)if(R(10)<MINO_RATE){const[x,y]=freeTile(far[R(far.length)]);mon.push({x,y,t:'M',hp:MOBS.M.hp+(depth>>1)})}
+ }
+ // 6. skeleton packs: also rolled last. A pack spawns together in one room (never the start room); pack = its id on this floor.
+ if(depth>=SKEL_DEPTH){
+  const lairs=rooms.filter(r=>r!=start);
+  for(let n=0;n<SKEL_PACKS;n++)if(R(10)<SKEL_RATE){
+   const lair=lairs[R(lairs.length)];
+   for(let i=0;i<SKEL_PACK;i++){const[x,y]=freeTile(lair);mon.push({x,y,t:'s',hp:MOBS.s.hp+(depth>>1),pack:n+1})}
+  }
+ }
+ // 7. doors: rolled last of all, so a seed's rooms, mobs and items are the same as before doors existed.
+ placeDoors();
+}
+// A door goes on a floor tile that has rock on exactly two sides and floor on the other two: either a straight
+// stretch of corridor (rock on opposite sides) or a bend (rock on two neighbouring sides, and on the diagonal between the open sides,
+// so a room corner does not count). Doors never touch each other.
+// Then every locked door gets one key/lockpick on a tile you can walk to without opening any lock.
+function placeDoors(){
+ const at=(x,y)=>map[y][x],free=(x,y)=>at(x,y)=='.'&&!items[x+','+y]&&!mon.some(m=>m.x==x&&m.y==y)&&!(p.x==x&&p.y==y);
+ const spots=[];
+ for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+  const rock=(a,b)=>at(x+a,y+b)=='#';
+  const straight=rock(0,-1)&&rock(0,1)&&!rock(-1,0)&&!rock(1,0)||rock(-1,0)&&rock(1,0)&&!rock(0,-1)&&!rock(0,1);
+  const bend=[-1,1].some(dx=>[-1,1].some(dy=>!rock(dx,0)&&!rock(0,dy)&&rock(-dx,0)&&rock(0,-dy)&&rock(dx,dy)));   // open towards (dx,dy)
+  if((straight||bend)&&free(x,y))spots.push([x,y]);
+ }
+ let locks=0;
+ for(let n=0;n<DOOR_COUNT&&spots.length;n++){
+  const[x,y]=spots.splice(R(spots.length),1)[0];
+  if([-1,0,1].some(b=>[-1,0,1].some(a=>'+L'.includes(at(x+a,y+b)))))continue;   // next to another door: skip
+  const lock=R(10)<LOCK_RATE;map[y][x]=lock?'L':'+';locks+=lock;
+ }
+ // tiles the player can reach from the start without passing a locked door (breadth-first, 8 directions like movement)
+ const q=[[p.x,p.y]],seenT=new Set([p.x+','+p.y]),spare=[];
+ for(const[x,y]of q){
+  if(free(x,y))spare.push([x,y]);
+  for(let b=-1;b<=1;b++)for(let a=-1;a<=1;a++){
+   const k=(x+a)+','+(y+b);
+   if(!seenT.has(k)&&!SOLID.includes(at(x+a,y+b))){seenT.add(k);q.push([x+a,y+b])}
+  }
+ }
+ while(locks--&&spare.length){const[x,y]=spare.splice(R(spare.length),1)[0];items[x+','+y]='('}
+}
+
+/* ---- 4b. CUSTOM FLOORS ----
+   gen() builds the floor for the current depth: the editor's floor custom[depth-1] during a custom run,
+   otherwise a random one (genRandom). A custom floor loads as drawn (placed mobs and items), then its random
+   extras are rolled with the run seed: f.n mobs picked from f.pool, f.pt potions and f.gd gold piles. */
+function gen(){custom?loadFloor(custom[depth-1]):genRandom()}
+const PACK_LINK=6;                               // custom floors: skeletons within this many tiles of each other form one pack
+function loadFloor(f){
+ W=f.w;H=f.h;
+ map=f.g.map(r=>r.slice());                      // play on a copy, so a run never changes the editor's floor
+ seen=Array.from({length:H},()=>Array(W).fill(0));
+ mon=f.mobs.map(m=>({x:m.x,y:m.y,t:m.t,hp:MOBS[m.t].hp+(depth>>1)}));
+ items=Object.assign({},f.items);
+ p.x=f.start[0];p.y=f.start[1];
+ sow(seed+':c'+depth);
+ scatter(f);linkPacks();
+}
+// Roll the floor's random mobs and items onto free floor tiles at least 4 tiles from the start.
+function scatter(f){
+ const k=(x,y)=>x+','+y,free=new Set();
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++)
+  if(map[y][x]=='.'&&Math.max(Math.abs(x-p.x),Math.abs(y-p.y))>=4&&!items[k(x,y)]&&!mon.some(m=>m.x==x&&m.y==y))free.add(k(x,y));
+ const pick=()=>{const a=[...free];if(!a.length)return null;const t=a[R(a.length)];free.delete(t);return t.split(',').map(Number)};
+ for(let i=0;f.pool&&i<f.n;i++){
+  const t=f.pool[R(f.pool.length)],c=pick();if(!c)break;
+  if(t!='s'){mon.push({x:c[0],y:c[1],t,hp:MOBS[t].hp+(depth>>1)});continue}
+  // a skeleton is a whole pack: the picked tile plus the nearest free ones, found breadth-first so never through a wall
+  const q=[c],tried=new Set([k(...c)]),pack=[c];
+  for(let j=0;j<q.length&&pack.length<SKEL_PACK;j++)for(let b=-1;b<=1;b++)for(let a=-1;a<=1;a++){
+   const x=q[j][0]+a,y=q[j][1]+b,s=k(x,y);
+   if(tried.has(s)||SOLID.includes(map[y][x]))continue;
+   tried.add(s);q.push([x,y]);
+   if(free.has(s)&&pack.length<SKEL_PACK){free.delete(s);pack.push([x,y])}
+  }
+  pack.forEach(([x,y])=>mon.push({x,y,t:'s',hp:MOBS.s.hp+(depth>>1)}));
+ }
+ for(let i=0;i<f.pt;i++){const c=pick();if(!c)break;items[k(...c)]='!'}
+ for(let i=0;i<f.gd;i++){const c=pick();if(!c)break;items[k(...c)]='$'}
+}
+// The skeleton AI needs a pack id on every skeleton: skeletons chained within PACK_LINK tiles of each other share one.
+function linkPacks(){
+ const sk=mon.filter(m=>m.t=='s');let id=0;
+ for(const m of sk){
+  if(m.pack)continue;
+  m.pack=++id;
+  const q=[m];                                   // grows while we loop: breadth-first over "close enough" links
+  for(const a of q)for(const b of sk)if(!b.pack&&Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))<=PACK_LINK){b.pack=id;q.push(b)}
+ }
+}
+
+/* ---- 5. SIGHT ----
+   A tile is visible if it is inside the sight circle and no wall lies on the straight line to it.
+   vis = visible now (mobs wake up when they are in vis), seen = explored (drawn dimmed). */
+function fov(){
+ vis=Array.from({length:H},()=>Array(W).fill(0));
+ const sight=p.candle?CANDLE_SIGHT:SIGHT,reach=Math.ceil(sight);
+ for(let y=p.y-reach;y<=p.y+reach;y++)for(let x=p.x-reach;x<=p.x+reach;x++){
+  if(x<0||y<0||x>=W||y>=H||(x-p.x)**2+(y-p.y)**2>sight*sight)continue;
+  const steps=Math.max(Math.abs(x-p.x),Math.abs(y-p.y));let clear=1;
+  for(let i=1;i<steps;i++){                      // sample the line player -> tile
+   const cx=Math.round(p.x+(x-p.x)*i/steps),cy=Math.round(p.y+(y-p.y)*i/steps);
+   if(OPAQUE.includes(map[cy][cx])){clear=0;break}   // walls and closed doors block sight
+  }
+  if(clear){vis[y][x]=1;seen[y][x]=1}
+ }
+}
+
+/* ---- 6. DRAWING ----
+   Walls are drawn as line-drawing glyphs. Only walls that touch a floor tile get a glyph, and each
+   glyph joins the neighbours that are also wall edges. Bits: 1=up 2=right 4=down 8=left. */
+const WALLS='+│─└││┌├─┘─┴┐┤┬┼';
+const inMap=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
+const isFloor=(x,y)=>inMap(x,y)&&map[y][x]!='#';
+const isEdge=(x,y)=>inMap(x,y)&&map[y][x]=='#'&&[-1,0,1].some(j=>[-1,0,1].some(i=>(i||j)&&isFloor(x+i,y+j))); // wall with a floor in its 8 neighbours
+// Does wall (x,y) join the edge wall at (x+dx,y+dy)? Only if floor runs alongside the pair.
+const joins=(x,y,dx,dy)=>{const a=x+dx,b=y+dy;return isEdge(a,b)&&(dx?isFloor(x,y-1)||isFloor(a,y-1)||isFloor(x,y+1)||isFloor(a,y+1):isFloor(x-1,y)||isFloor(x-1,b)||isFloor(x+1,y)||isFloor(x+1,b))};
+const wallChar=(x,y)=>WALLS[joins(x,y,0,-1)*1+joins(x,y,1,0)*2+joins(x,y,0,1)*4+joins(x,y,-1,0)*8];
+
+// CSS class of each floor item glyph (editor and game). A new item needs a glyph here, in PICKUP and in genRandom().
+const ICON={'!':'pot','$':'gold','(':'gear'};
+function draw(){
+ // viewport: VW x VH tiles centred on the player, clamped to the map
+ const ox=Math.max(0,Math.min(W-VW,p.x-(VW>>1))),oy=Math.max(0,Math.min(H-VH,p.y-(VH>>1)));
+ let s='';
+ for(let y=oy;y<Math.min(oy+VH,H);y++){      // min(): custom floors can be smaller than the viewport
+  for(let x=ox;x<Math.min(ox+VW,W);x++){
+   let ch=' ',c='';                              // c = CSS class, '' = blank
+   if(x==p.x&&y==p.y){ch='@';c=hurt.has(p)?'you hurt':'you'}
+   else if(vis[y][x]){                           // in sight: mob > item > terrain
+    const m=mon.find(m=>m.x==x&&m.y==y),it=items[x+','+y];
+    if(m){ch=m.t;c=hurt.has(m)?'mob hurt':'mob'}
+    else if(it){ch=it;c=ICON[it]}
+    else{ch=map[y][x];c=ch=='#'?'wall':ch=='>'?'stairs':ch=='.'?'floor':'door';if(ch=='#')ch=wallChar(x,y);ch=SHOWN[ch]||ch}
+   }else if(seen[y][x]){ch=map[y][x];c='mem';if(ch=='#')ch=wallChar(x,y);ch=SHOWN[ch]||ch}  // remembered: terrain only
+   s+=c?`<i class="${c}">${ch}</i>`:' ';
+  }
+  s+='\n';
+ }
+ $('map').innerHTML=s;
+ if(hurt.size){hurt.clear();setTimeout(()=>mode==PLAY&&draw(),200)}   // red for one short flash, then redraw normally
+ const n=Math.max(0,Math.round(p.hp/p.maxHp*10));  // HP bar, 10 cells
+ $('stats').textContent=`HP [${'#'.repeat(n)+'-'.repeat(10-n)}] ${Math.max(0,p.hp)}/${p.maxHp}  Gold ${gold}\nDepth ${depth}${custom?'/'+custom.length:''}  Dmg ${p.dmg}%  Ruby x${p.rubies}  Turn ${turn}\nSeed ${seed}${p.sword?'  Sword':''}${p.cross?'  Cross':''}${p.gear.length?`  Keys x${p.gear.length}`:''}${p.immune?`  Safe ${p.immune}`:''}`;
+ $('log').textContent=msgs.join('\n');
+ $('mbtn').textContent=back=='edit'?'[ EDITOR ]':back=='comm'?'[ LEVELS ]':'[ MENU ]';
+ const pb=$('potbtn');
+ pb.setAttribute('aria-label',`Drink potion, ${p.potions} owned`);pb.textContent=`[ POTION (${p.potions}) ]`;pb.style.opacity=p.potions?1:.45;
+}
+
+/* ---- 7. TURNS ---- */
+// Walking onto an item picks it up (potions are drunk on the spot).
+// What each floor item does when you step on it. To add an item: a glyph here, in ICON, and a spawn rule in genRandom().
+const PICKUP={
+ '$':()=>{const g=1+R(9)+depth*3;gold+=g;say(`You pocket ${g} gold.`)},
+ '!':()=>{p.hp=Math.min(p.maxHp,p.hp+HEAL);say('You drink a potion. Healed.')},
+ '(':()=>{const k=GEAR[R(GEAR.length)];p.gear.push(k);say(`You find a ${k}.`)}};
+function pick(){
+ const k=p.x+','+p.y,i=items[k];if(!i)return;delete items[k];PICKUP[i]();
+}
+// Player attacks mob m. Damage = 2..5 x dmg%; the fractional part is a chance of +1. Rubies heal on a kill.
+const hurt=new Set();                            // creatures to draw red on the next draw
+function hit(m){
+ const name=MOBS[m.t].name;
+ hurt.add(m);m.hostile=1;                       // a mob you have attacked always fights back (a minotaur then skips the toll)
+ if(R(10)<(MOBS[m.t].dodge||0)){say(`You miss the ${name}. Lucky little thing.`);return}   // dodge only rolls for mobs that have it
+ const x=(2+R(4))*p.dmg/100,d=Math.floor(x)+(rnd()<x%1?1:0);m.hp-=d;
+ if(m.hp<=0){mon.splice(mon.indexOf(m),1);const h=Math.min(p.maxHp-p.hp,3*p.rubies);p.hp+=h;say(`You slay the ${name}.`+(h?` Ruby +${h} HP.`:''))}else say(`You hit the ${name} (${d}).`);
+}
+// Free tile a mob may step onto (floor, not you, not another mob).
+const canStep=(x,y)=>!SOLID.includes(map[y][x])&&!(x==p.x&&y==p.y)&&!mon.some(o=>o.x==x&&o.y==y);
+// Walking distance from every floor tile to the player (breadth-first, 8 directions like movement). -1 = unreachable.
+function distToPlayer(){
+ const d=Array.from({length:H},()=>Array(W).fill(-1)),q=[[p.x,p.y]];d[p.y][p.x]=0;
+ for(let i=0;i<q.length;i++){
+  const[x,y]=q[i];
+  for(let b=-1;b<=1;b++)for(let a=-1;a<=1;a++){
+   const nx=x+a,ny=y+b;
+   if(inMap(nx,ny)&&!SOLID.includes(map[ny][nx])&&d[ny][nx]<0){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}
+  }
+ }
+ return d;
+}
+// Mobs act after every player turn. Normal mobs: wake when seen, then attack if adjacent (70% hit) else step closer.
+// Hunters (minotaur): need no sight, they path straight to you. Next to you they first ask for a toll (PARLEY);
+// if you cannot pay, or you refuse, or you hit them first, they become hostile and attack like any other mob.
+// Swarms (skeletons): idle members roam together (roam()); one sighting wakes the whole pack, which then paths to you.
+// Greedy step toward a tile: diagonal, then horizontal, then vertical. Used by normal mobs chasing you and by pack followers.
+function stepToward(m,tx,ty){
+ const sx=Math.sign(tx-m.x),sy=Math.sign(ty-m.y);
+ for(const[a,b]of[[sx,sy],[sx,0],[0,sy]]){
+  if(!a&&!b)continue;
+  if(canStep(m.x+a,m.y+b)){m.x+=a;m.y+=b;return}
+ }
+}
+// Idle pack member: the leader (first living member) wanders; the others follow if they drift beyond PACK_RADIUS, else wander.
+function roam(m){
+ const lead=mon.find(o=>o.pack==m.pack);
+ if(lead!=m&&Math.max(Math.abs(lead.x-m.x),Math.abs(lead.y-m.y))>PACK_RADIUS){stepToward(m,lead.x,lead.y);return}
+ const a=R(3)-1,b=R(3)-1;
+ if((a||b)&&canStep(m.x+a,m.y+b)){m.x+=a;m.y+=b}
+}
+function enemies(){
+ let flow;                                       // distToPlayer(), built once per turn and only if a hunter needs it
+ const safe=p.immune>0;if(safe)p.immune--;     // revival immunity: attacks this turn do nothing
+ for(const m of mon){
+  const mob=MOBS[m.t],name=mob.name;
+  if(vis[m.y][m.x]){                             // sight is what wakes them, so a bigger view (candle) wakes them from further away
+   m.awake=1;
+   if(mob.swarm)for(const o of mon)if(o.pack==m.pack)o.awake=1;   // one sighting alerts the whole pack
+  }
+  if(!mob.hunter&&!m.awake){if(mob.swarm)roam(m);continue}
+  const dx=p.x-m.x,dy=p.y-m.y;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<2){
+   if(mob.hunter&&!m.hostile){                   // offer the deal before fighting
+    if(mode==PARLEY)continue;                    // already talking to another minotaur: this one waits
+    if(gold>=minoToll(depth)){deal=m;mode=PARLEY;showParley();continue}
+    m.hostile=1;say(`The ${name} wants ${minoToll(depth)} gold. You have too little.`)   // cannot pay: it attacks at once
+   }
+   if(R(10)<7){
+    if(!safe)hurt.add(p);
+    if(safe)say(`The ${name}'s blow glances off you.`)
+    else if(mob.steal){const g=Math.min(gold,mob.steal+depth);gold-=g;say(g?`The ${name} steals ${g} gold.`:`The ${name} finds your pockets empty.`)}   // thieves take gold, not HP
+    else{const d=1+R(mob.dmg+(depth>>2));p.hp-=d;say(`The ${name} hits you (${d}).`)}
+   }else say(`The ${name} misses.`);
+   continue;
+  }
+  if(mob.hunter||mob.swarm){                     // step onto the neighbour closest to you: walking distance first, then straight-line
+   flow=flow||distToPlayer();                    // distance, so a crowd spreads around you instead of queueing behind each other
+   const score=(x,y)=>flow[y][x]*1e5+(x-p.x)**2+(y-p.y)**2;
+   let best=null,bd=score(m.x,m.y);
+   for(let b=-1;b<=1;b++)for(let a=-1;a<=1;a++){
+    const x=m.x+a,y=m.y+b;
+    if((a||b)&&flow[y][x]>=0&&score(x,y)<bd&&canStep(x,y)){best=[x,y];bd=score(x,y)}
+   }
+   if(best){m.x=best[0];m.y=best[1]}
+   continue;
+  }
+  stepToward(m,p.x,p.y);
+ }
+ if(p.hp<=0){
+  if(p.cross){p.cross=0;p.hp=Math.ceil(p.maxHp/2);p.immune=3;say('The cross shatters! You rise at half health.')}   // same spot, same floor
+  else{dead=1;say(`You died on depth ${depth} with ${gold} gold. Press R to retry, M for menu.`);if(mode==PARLEY){mode=PLAY;$('cards').hidden=1;$('map').hidden=0}}
+ }
+}
+// One player turn: move/attack by (dx,dy), or wait with (0,0). Then sight, mobs and screen update.
+function act(dx,dy){
+ if(dx||dy){
+  const nx=p.x+dx,ny=p.y+dy,m=mon.find(m=>m.x==nx&&m.y==ny);
+  if(m){
+   // with a sword the swing hits every foe in the 8 tiles around you (like a chess king), not just the one you bumped
+   if(p.sword)mon.filter(o=>Math.max(Math.abs(o.x-p.x),Math.abs(o.y-p.y))<2).forEach(o=>hit(o));
+   else hit(m);
+  }
+  else if(map[ny][nx]=='L'){                      // locked door: any key or lockpick opens it (and is used up)
+   if(!p.gear.length){say('The door is locked.');draw();return}   // no turn spent
+   map[ny][nx]='+';say(`You unlock the door with your ${p.gear.shift()}.`);
+  }
+  else if(!SOLID.includes(map[ny][nx])){
+   p.x=nx;p.y=ny;
+   if(map[ny][nx]=='+'){map[ny][nx]='.';say('You open the door.')}   // walking into a closed door opens it
+   pick();
+  }
+  else return;                                   // bumped a wall: no turn spent
+ }
+ turn++;fov();enemies();draw();
+}
+// Drinking a stored potion costs a turn (it is a wait).
+function usePot(){
+ if(p.potions<1){say('You have no potions.');draw();return}
+ if(p.hp>=p.maxHp){say('You are already at full health.');draw();return}
+ p.potions--;p.hp=Math.min(p.maxHp,p.hp+HEAL);say('You drink a potion. Healed.');act(0,0);
+}
+
+/* ---- 8. REWARD AND SHOP SCREENS ----
+   Both replace the map with #cards. Click targets carry data-c (reward), data-b (shop item) or data-l (leave). */
+function descend(){
+ if(map[p.y][p.x]!='>'){say('There are no stairs here.');draw();return}
+ if(p.candle){p.candle=0;say('Your candle burns out.')}   // a candle lasts one floor
+ if(custom&&depth>=custom.length){won=1;say(`You escape with ${gold} gold! R to replay, M to go back.`);draw();return}   // last floor of a custom dungeon
+ mode=REWARD;showReward();
+}
+function showReward(){
+ const maxed=p.dmg>=MAX_DMG;
+ $('map').hidden=1;$('cards').hidden=0;
+ $('cards').innerHTML=`<div class="ct">== CHOOSE A REWARD ==</div><div class="row">${box(`<div class="nm">[1] GRINDSTONE</div><pre>${ART.grind}</pre><div>${maxed?'MAXED OUT':`+${GRIND}% damage`}</div><div class="pv">Damage ${p.dmg}% -&gt; ${Math.min(MAX_DMG,p.dmg+GRIND)}%</div>`,'card'+(maxed?' off':''),'data-c="1"')}${box(`<div class="nm">[2] HEART</div><pre>${ART.heart}</pre><div>Heal ${HEART_HP} HP, +${HEART_HP} max HP</div><div class="pv">HP ${p.hp}/${p.maxHp} -&gt; ${p.hp+HEART_HP}/${p.maxHp+HEART_HP}</div>`,'card','data-c="2"')}</div>`;
+}
+function choose(c){
+ if(mode!=REWARD)return;
+ if(c==1){if(p.dmg>=MAX_DMG)return;p.dmg+=GRIND;say(`The grindstone sharpens your blade. Damage ${p.dmg}%.`)}
+ else{p.maxHp+=HEART_HP;p.hp+=HEART_HP;say(`The heart warms you. +${HEART_HP} HP, +${HEART_HP} max HP.`)}
+ mode=SHOP;shopPage=0;draw();showShop();
+}
+function showShop(){
+ const pages=Math.ceil(ITEMS.length/SHOP_PAGE),first=shopPage*SHOP_PAGE;
+ const full=it=>it.max&&it.own()>=it.max;        // at the carry limit
+ // The label is the key to press on this page (1..SHOP_PAGE); data-b is the item's global number, which buy() takes.
+ const card=(it,i)=>box(`<div class="nm">[${i-first+1}] ${it.name}</div><pre>${ART[it.art]}</pre><div>${it.info}</div><div class="pv">Owned: ${it.own()}</div><div class="tag">[ ${it.price} $ ]</div>`,`card sh${gold<it.price||full(it)?' off':''}`,`data-b="${i+1}"`);
+ const arrow=(d,t,label)=>`<button data-n="${d}" aria-label="${label}"${shopPage+d<0||shopPage+d>=pages?' disabled':''}>[ ${t} ]</button>`;
+ $('cards').innerHTML=`<div class="ct"><pre class="bn">${ART.shop}</pre></div>${box(`YOUR GOLD: ${gold} $`,'gd')}<div class="row" style="--per:${SHOP_PAGE}">${ITEMS.slice(first,first+SHOP_PAGE).map((it,j)=>card(it,first+j)).join('')}</div><div class="nav">${arrow(-1,'&lt;','Previous page')}<span>${shopPage+1}/${pages}</span>${arrow(1,'&gt;','Next page')}</div><div class="leave" data-l="1">[ LEAVE SHOP &gt; ]</div><div class="hint">Tap a card or press 1-${SHOP_PAGE} to buy. &lt; / &gt; flip pages. Enter to leave.</div>`;
+}
+function shopFlip(d){
+ if(mode!=SHOP)return;
+ shopPage=Math.max(0,Math.min(Math.ceil(ITEMS.length/SHOP_PAGE)-1,shopPage+d));showShop();
+}
+function buy(i){
+ const it=ITEMS[i-1];
+ if(mode!=SHOP||!it)return;
+ if(it.max&&it.own()>=it.max){say(`You already hold a ${it.name.toLowerCase()}.`);draw();return}
+ if(gold<it.price){say('Not enough gold.');draw();return}
+ gold-=it.price;it.buy();
+ draw();showShop();
+}
+// PARLEY: a minotaur reached you and you can afford its toll. Y pays and it leaves, N makes it hostile.
+function showParley(){
+ const t=minoToll(depth);
+ $('map').hidden=1;$('cards').hidden=0;
+ $('cards').innerHTML=`<div class="ct">== THE MINOTAUR BLOCKS YOUR PATH ==</div><div class="ct"><pre class="bn">${ART.minotaur}</pre></div><div class="ct">"Pay ${t} gold, or die."</div><div class="row">${box(`<div class="nm">[Y] PAY</div><div>It takes the gold and leaves.</div><div class="pv">Gold ${gold} -&gt; ${gold-t}</div>`,'card','data-p="y"')}${box(`<div class="nm">[N] REFUSE</div><div>Fight it to the death.</div><div class="pv">Minotaur ${deal.hp} HP, hits up to ${MOBS.M.dmg+(depth>>2)}</div>`,'card','data-p="n"')}</div>`;
+}
+function parley(pay){
+ if(mode!=PARLEY)return;
+ if(pay){gold-=minoToll(depth);mon.splice(mon.indexOf(deal),1);say('The minotaur takes your gold and lumbers off into the dark.')}
+ else{deal.hostile=1;say('You refuse. The minotaur roars.')}
+ mode=PLAY;$('cards').hidden=1;$('map').hidden=0;draw();
+}
+function leave(){
+ if(mode!=SHOP)return;
+ mode=PLAY;$('cards').hidden=1;$('map').hidden=0;
+ depth++;gen();say(`You descend to depth ${depth}.`);if(p.candle)say('Your candle lights the way.');fov();draw();
+}
+
+/* ---- 9. INPUT ----
+   Keyboard, pad buttons and card clicks all end up in key(k). */
+function key(k){
+ if(mode==MENU){menuKey(k);return}
+ if(mode==EDIT){editKey(k);return}
+ if(mode==COMM){commKey(k);return}
+ if(k!='m')quitArmed=0;
+ if(k=='m'){                                     // back to the menu: needs a second press unless you are dead
+  if(dead||won||quitArmed){back=='edit'?showEditor():back=='comm'?showComm():showMenu();return}
+  quitArmed=1;say('Abandon this run? Press MENU again.');draw();return;
+ }
+ if(k=='r'&&(dead||won)){init($('sd').value.trim());return}   // retry: seed box value, blank = new random seed
+ if(dead||won)return;
+ if(mode==PARLEY){if(k=='y')parley(1);else if(k=='n')parley(0);return}
+ if(mode==REWARD){if(k=='1'||k=='2')choose(+k);return}
+ if(mode==SHOP){
+  const n=+k;
+  if(k=='>'||k=='ArrowRight')shopFlip(1);
+  else if(k=='<'||k=='ArrowLeft')shopFlip(-1);
+  else if(k=='Enter')leave();
+  else if(n>=1&&n<=SHOP_PAGE)buy(shopPage*SHOP_PAGE+n);   // key n = nth card on this page
+  return;
+ }
+ if(k=='>'){descend();return}
+ if(k=='p'){usePot();return}
+ const d=K[k];if(d)act(d[0],d[1]);
+}
+addEventListener('keydown',e=>{
+ if(e.target.tagName=='INPUT'||e.target.tagName=='TEXTAREA'||e.ctrlKey||e.metaKey||e.altKey||(e.repeat&&mode==PARLEY))return;   // the seed box gets normal typing; a held Y must not pay
+ const k=e.key.length>1?e.key:e.key.toLowerCase();
+ if(K[k]||/^[<>rpm1-9]$/.test(k)||k=='Enter'||k=='Escape'){e.preventDefault();key(k)}
+});
+
+// On-screen pad: data-k is the key sent to key().
+const DPAD=[['y','\\'],['k','^'],['u','/'],['h','&lt;'],['.','.'],['l','&gt;'],['b','/'],['j','v'],['n','\\']];
+$('pad').innerHTML='<div class="dpad">'+DPAD.map(([k,t])=>`<button data-k="${k}">[ ${t} ]</button>`).join('')+'</div><div class="acts"><button data-k="&gt;">[ DESCEND &gt; ]</button><button id="potbtn" data-k="p">[ POTION (0) ]</button><button data-k="r">[ RESTART ]</button><button id="mbtn" data-k="m">[ MENU ]</button></div>';
+$('pad').onclick=e=>{const k=e.target.dataset.k;if(k&&mode!=PARLEY)key(k)};   // pad Y/N are diagonal moves: only the on-screen cards answer a parley
+// Seed row: ASCII-boxed input + START. Enter or START begins a new run with that seed (blank = random).
+$('sdrow').innerHTML=box('<input id="sd" maxlength="24" placeholder="seed (blank = random)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Seed">')+'<button id="go">[ START ]</button>';
+const go=()=>{init($('sd').value.trim());$('sd').blur()};
+$('go').onclick=go;
+$('sd').onkeydown=e=>{if(e.key=='Enter')go()};
+$('cards').onclick=e=>{const t=e.target.closest('[data-c],[data-b],[data-l],[data-p],[data-n]');if(!t)return;const d=t.dataset;if(d.c)choose(+d.c);else if(d.b)buy(+d.b);else if(d.p)parley(d.p=='y');else if(d.n)shopFlip(+d.n);else leave()};
+const AL={y:'Move northwest',k:'Move north',u:'Move northeast',h:'Move west','.':'Wait a turn',l:'Move east',b:'Move southwest',j:'Move south',n:'Move southeast','>':'Descend stairs',p:'Drink potion',r:'Restart',m:'Open the main menu'};
+document.querySelectorAll('#pad button').forEach(b=>b.setAttribute('aria-label',AL[b.dataset.k]));
+
+/* ---- 10. BOOT ----
+   fit() picks the viewport size and a font size so VW tiles span the screen width. */
+function fit(){
+ const small=innerWidth<640;VW=small?23:41;VH=small?13:19;
+ // measure one monospace char as a fraction of the font size (it differs per platform font)
+ const t=document.createElement('span');t.style.cssText='position:absolute;visibility:hidden;white-space:pre;font:100px ui-monospace,Menlo,Consolas,monospace';t.textContent='0000000000';document.body.appendChild(t);
+ const cw=t.getBoundingClientRect().width/1000;t.remove();
+ $('map').style.fontSize=$('egrid').style.fontSize=Math.max(9,Math.min(24,(Math.min(innerWidth,640)-24)/(VW*cw)))+'px';
+}
+addEventListener('resize',()=>{fit();if(mode==EDIT)drawEdit();else if(map&&mode!=MENU&&mode!=COMM)draw()});
+
+/* ---- MAIN MENU ----
+   Shown at start and from the MENU button. PLAY reads the seed box and starts a run; HOW TO PLAY toggles the rules panel. */
+const MENU_ITEMS=['PLAY','PLAY CUSTOM','DEPTH EDITOR','COMMUNITY','HOW TO PLAY'];
+const HOW=`Find the stairs (>) on every floor.
+Bump into a foe to attack it.
+After each descent pick a reward,
+then spend your gold in the shop.
+
+r rats are the weakest foes.
+g goblins are basic foes.
+o orcs are stronger versions of the goblin, dangerous in groups.
+T trolls are beefy enemies, hard to kill.
+h halflings steal your gold.
+s skeletons hunt in packs of 4.
+
++ doors open as you walk in. Some are
+locked: find a ( key or lockpick first.
+M minotaur demands a toll of gold to live or die.
+f fanatics are axe swinging glass cannons, low hp but high damage.
+b beserkers are high damage, low hp warriors similar to it's cousin, the fanatic.
+
+DEPTH EDITOR: build your own floors,
+TEST them, share them as a code.
+PLAY CUSTOM runs the one you built.
+
+COMMUNITY: official levels, and levels
+other players share. A moderator
+approves each one first.`;
+function drawMenu(){
+ const item=(t,i)=>`<button class="mi" data-m="${i}"><span>${i==menuSel?'&gt; ':'  '}${t}</span><span>${i==menuSel?'&lt;':''}</span></button>`;
+ $('mbox').innerHTML=box(`<div class="mh">CHOOSE YOUR DESCENT</div><div class="rule">${'-'.repeat(40)}</div>${MENU_ITEMS.map(item).join('')}`,'menubox');
+ $('how').hidden=!howOpen;
+}
+function show(id){['menu','edit','comm','game'].forEach(i=>$(i).hidden=i!=id)}   // exactly one screen is visible
+function showMenu(){mode=MENU;show('menu');drawMenu()}
+function menuPick(i){
+ $('mmsg').textContent='';
+ if(i==0)play();
+ else if(i==1)playCustom();
+ else if(i==2)openEditor();
+ else if(i==3)openComm();
+ else{howOpen=!howOpen;drawMenu()}
+}
+function menuKey(k){
+ const n=MENU_ITEMS.length;
+ if(k=='ArrowDown'||k=='s'||k=='j')menuSel=(menuSel+1)%n;
+ else if(k=='ArrowUp'||k=='w'||k=='k')menuSel=(menuSel+n-1)%n;
+ else if(k=='Enter'||k==' '){menuPick(menuSel);return}
+ drawMenu();
+}
+function play(c){                                // c = a custom dungeon to run; none = the random endless one
+ const s=$('msd').value.trim();
+ custom=c||null;firstFloor=1;back='';
+ show('game');
+ $('sd').value=s;                                // the in-game seed box starts with the same seed, so a retry replays it
+ init(s);
+}
+function playCustom(){
+ const e=dungeon?dungeonError(dungeon):'No custom dungeon yet. Build one in the DEPTH EDITOR.';
+ if(e){$('mmsg').textContent=e;return}
+ play(dungeon);
+}
+$('title').textContent=ART.title.trimEnd();   // trimEnd drops the newline that keeps the last "\" off the closing backtick
+$('wall').textContent='_|^|'.repeat(8).slice(0,30);
+$('how').innerHTML=box(`<pre class="how">${HOW}</pre>`,'menubox');
+$('mseed').innerHTML=box('<input id="msd" maxlength="24" placeholder="seed (blank = random)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Seed">','menubox');
+$('msd').onkeydown=e=>{if(e.key=='Enter')play()};
+$('menu').onclick=e=>{const b=e.target.closest('[data-m]');if(b){menuSel=+b.dataset.m;menuPick(menuSel)}};
+
+/* ---- 11. DEPTH EDITOR ----
+   A custom dungeon is a chain of floors. TEST plays the current floor, PLAY the whole chain, with the normal
+   reward + shop between floors; the stairs on the last floor end the run.
+   A floor f = {w,h, g (grid of TILES: '#' rock, '.' floor, '>' stairs, '+' door, 'L' locked door), start:[x,y], mobs:[{x,y,t}], items:{'x,y': a glyph of ICON},
+                n (random mobs), pool (glyphs they are picked from), pt / gd (random potions / gold piles)}.
+   The outer ring of tiles is always rock: the game never checks for the map edge, so nothing may stand there.
+   encode()/decode() turn a dungeon into a one-line text CODE, which is also how it is saved in the browser. */
+const MAX_FLOORS=10,MAX_W=110,MAX_H=60,STORE='nadir.dungeon';
+const SIZES=[[23,13],[46,26],[69,39]];           // floor size presets; SIZE cycles through them
+const TOOLS=[['#','WALL'],['.','FLOOR'],['>','STAIRS'],['@','START'],['!','POTION'],['$','GOLD'],['(','KEY'],['+','DOOR'],['L','LOCKED DOOR'],['x','ERASE'],
+ ...Object.keys(MOBS).map(t=>[t,MOBS[t].name.toUpperCase()])];
+let dungeon=null,fi=0,tool='#',brush=1,ox=0,oy=0,setupOpen=0,codeOpen=0,painting=0,armed='';
+// dungeon = the floors | fi = floor being edited | ox,oy = top-left tile of the view | armed = action waiting for a second press
+const E=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const note=t=>{$('emsg').textContent=t};
+const btn=(a,v,t,c='',l='')=>`<button data-e="${a}"${v==null?'':` data-v="${E(v)}"`}${c?` class="${c}"`:''}${l?` aria-label="${l}"`:''}>[ ${t} ]</button>`;
+
+// ---- floors ----
+// A new floor is playable at once: one room with the start on its left and the stairs on its right.
+function newFloor(n){
+ const w=46,h=26,g=Array.from({length:h},()=>Array(w).fill('#'));
+ for(let y=8;y<18;y++)for(let x=8;x<38;x++)g[y][x]='.';
+ g[13][36]='>';
+ return{w,h,g,start:[10,13],mobs:[],items:{},n:4,pt:3,gd:3,pool:[...new Set(mobPool(n))].join('')};
+}
+// Change the floor size. Content that still fits is kept, the outer ring is rock again, and a cropped start returns to the middle.
+function resize(f,w,h){
+ const g=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>x&&y&&x<w-1&&y<h-1?(f.g[y]||[])[x]||'#':'#'));
+ f.mobs=f.mobs.filter(m=>m.x<w&&m.y<h&&g[m.y][m.x]=='.');
+ f.items=Object.fromEntries(Object.entries(f.items).filter(([k])=>{const[x,y]=k.split(',').map(Number);return x<w&&y<h&&g[y][x]=='.'}));
+ if(!(f.start[0]<w-1&&f.start[1]<h-1&&g[f.start[1]][f.start[0]]!='#')){f.start=[w>>1,h>>1];g[h>>1][w>>1]='.'}
+ f.g=g;f.w=w;f.h=h;
+}
+// Replace the layout with one from the main game's generator (placed mobs and items are cleared).
+function genLayout(f,n){
+ seed=Math.random().toString(36).slice(2,8);depth=n;p={x:0,y:0};
+ genRandom();
+ f.w=W;f.h=H;f.g=map.map(r=>r.map(t=>'+L'.includes(t)?'.':t));   // doors are dropped: their keys are cleared with the other items
+ f.start=[p.x,p.y];f.mobs=[];f.items={};
+}
+// Apply the selected tool at tile (x,y). Only inner tiles change, and a tile holds at most one of start / mob / item.
+function applyTool(f,x,y){
+ const inner=(a,b)=>a>0&&b>0&&a<f.w-1&&b<f.h-1;
+ if(!inner(x,y))return;
+ const isStart=f.start[0]==x&&f.start[1]==y,t=f.g[y][x];
+ const clear=(a,b)=>{delete f.items[a+','+b];f.mobs=f.mobs.filter(m=>m.x!=a||m.y!=b)};
+ if(tool=='#'||tool=='.'){                       // terrain uses the square brush; the start tile is never touched
+  const h=brush>>1;
+  for(let b=y-h;b<=y+h;b++)for(let a=x-h;a<=x+h;a++){
+   if(!inner(a,b)||(f.start[0]==a&&f.start[1]==b))continue;
+   if(tool=='#'){f.g[b][a]='#';clear(a,b)}else f.g[b][a]='.';
+  }
+ }
+ else if('>+L'.includes(tool)){if(!isStart){f.g[y][x]=tool;clear(x,y)}}   // stairs and doors replace whatever is on the tile
+ else if(tool=='@'){f.g[y][x]='.';clear(x,y);f.start=[x,y]}
+ else if(tool=='x')clear(x,y);
+ else if(t=='.'&&!isStart){clear(x,y);if(ICON[tool])f.items[x+','+y]=tool;else f.mobs.push({x,y,t:tool})}
+}
+// Why a floor cannot be played ('' = fine): from the start you must be able to reach the stairs.
+// Walking is 8 directions, like the player. A locked door stays shut until you hold a '(' for it: each '(' you can reach
+// opens one lock you choose, so every choice is tried (solve), remembering door sets that already failed.
+function floorError(f){
+ if(!f.g.some(r=>r.includes('>')))return'no stairs (use the > tool)';
+ const bad=new Set();let work=0;
+ const solve=open=>{                             // open = the locked doors opened so far ('x,y' keys)
+  const tag=[...open].sort().join(';');
+  if(bad.has(tag)||++work>3000)return 0;
+  const q=[f.start],seen=new Set([f.start.join()]),shut=new Set();let keys=-open.size;
+  for(const[x,y]of q){
+   if(f.g[y][x]=='>')return 1;
+   if(f.items[x+','+y]=='(')keys++;
+   for(let b=-1;b<=1;b++)for(let a=-1;a<=1;a++){
+    const k=(x+a)+','+(y+b),t=f.g[y+b][x+a];
+    if(t=='#'||seen.has(k))continue;
+    if(t=='L'&&!open.has(k))shut.add(k);else{seen.add(k);q.push([x+a,y+b])}
+   }
+  }
+  if(keys>0)for(const k of shut){open.add(k);const ok=solve(open);open.delete(k);if(ok)return 1}
+  bad.add(tag);return 0;
+ };
+ return solve(new Set())?'':'the stairs cannot be reached from the start'+(f.g.some(r=>r.includes('L'))?' (each locked door needs a ( you can reach first)':'');
+}
+function dungeonError(d){for(let i=0;i<d.length;i++){const e=floorError(d[i]);if(e)return`Floor ${i+1}: ${e}.`}return''}
+
+// ---- code: one line of text. NADIR1~floor~floor...  floor = start:n,potions,gold,pool:rows:mobs:items
+// rows are run-length encoded ("#40.6#22") and joined with "/"; mobs look like "r12,5;g3,4", items like "!7,7;$9,2".
+const TILES='#.>+L';                             // tile glyphs a floor code may contain
+const rle=s=>s.replace(/(.)\1*/g,(m,c)=>c+m.length);
+const encode=d=>'NADIR1~'+d.map(f=>[
+ f.start.join(','),
+ [f.n,f.pt,f.gd,f.pool].join(','),
+ f.g.map(r=>rle(r.join(''))).join('/'),
+ f.mobs.map(m=>m.t+m.x+','+m.y).join(';'),
+ Object.entries(f.items).map(([k,i])=>i+k).join(';')
+].join(':')).join('~');
+// Strict: anything odd throws an Error whose message is shown to the player. Codes come from other people, so check everything.
+// Copy a textarea's text. The text is selected first, so if the clipboard is blocked you can still copy it by hand.
+function copyTa(ta,out){
+ ta.select();
+ const fail=()=>out('Copy is blocked here: the code is selected, copy it by hand.');
+ try{navigator.clipboard.writeText(ta.value).then(()=>out('Code copied.'),fail)}catch(e){fail()}
+}
+function decode(code){
+ const bad=m=>{throw new Error(m)};
+ const parts=code.replace(/\s+/g,'').split('~');
+ if(parts[0]!='NADIR1')bad('not a Nadir code');
+ if(parts.length<2||parts.length>MAX_FLOORS+1)bad('wrong number of floors');
+ const mobRe=new RegExp('^(['+Object.keys(MOBS).join('')+'])(\\d+),(\\d+)$'),itemRe=new RegExp('^(['+Object.keys(ICON).join('')+'])(\\d+),(\\d+)$');
+ return parts.slice(1).map((s,i)=>{
+  const at=m=>bad(`floor ${i+1}: ${m}`),q=s.split(':');
+  while(q.length<5)q.push('');                   // a pasted code may have lost its trailing empty fields
+  if(q.length>5)at('malformed');
+  const g=q[2].split('/').map(r=>{
+   if(!new RegExp('^(['+TILES+']\\d+)+$').test(r))at('bad row');
+   let o='';for(const[,c,n]of r.matchAll(new RegExp('(['+TILES+'])(\\d+)','g'))){if(o.length+ +n>MAX_W)at('too wide');o+=c.repeat(+n)}
+   return[...o];
+  }),h=g.length,w=g[0].length;
+  if(h<5||h>MAX_H||w<5||g.some(r=>r.length!=w))at('bad size');
+  if(g.some((r,y)=>r.some((c,x)=>c!='#'&&(!x||!y||x==w-1||y==h-1))))at('the outer ring must be rock');
+  const start=q[0].split(',').map(Number),[n,pt,gd,pool='']=q[1].split(',');
+  if(start.length!=2||!(g[start[1]]&&g[start[1]][start[0]]&&!SOLID.includes(g[start[1]][start[0]])))at('bad start');
+  const num=(v,max)=>{if(!/^\d+$/.test(v)||+v>max)at('bad number');return+v};
+  const f={w,h,g,start,mobs:[],items:{},n:num(n,30),pt:num(pt,20),gd:num(gd,20),pool:[...new Set(pool)].join('')};
+  if([...f.pool].some(c=>!MOBS[c]))at('bad mob pool');
+  const used=new Set([start.join()]);
+  const place=(list,re,add)=>list&&list.split(';').forEach(e=>{
+   const m=re.exec(e);if(!m)at('bad entry');
+   const k=m[2]+','+m[3];
+   if(g[m[3]]===undefined||g[m[3]][m[2]]!='.'||used.has(k))at('bad placement');
+   used.add(k);add(m[1],+m[2],+m[3],k);
+  });
+  place(q[3],mobRe,(t,x,y)=>f.mobs.push({x,y,t}));
+  place(q[4],itemRe,(t,x,y,k)=>{f.items[k]=t});
+  return f;
+ });
+}
+function saveDungeon(){try{localStorage.setItem(STORE,encode(dungeon));return 1}catch(e){return 0}}
+const loadSaved=()=>{try{return decode(localStorage.getItem(STORE)||'')}catch(e){return null}};
+const persist=()=>{if(!saveDungeon())note('Browser save is blocked here: use CODE to keep your dungeon.')};
+
+// ---- drawing ----
+const centerOn=()=>{const s=dungeon[fi].start;ox=s[0]-(VW>>1);oy=s[1]-(VH>>1)};
+// The map view: everything is visible. Rock that touches no floor shows as a dim '#' so you can see what you can still paint.
+function drawGrid(){
+ const f=dungeon[fi],mk={};
+ f.mobs.forEach(m=>{mk[m.x+','+m.y]=m.t});
+ let s='';
+ for(let y=oy;y<oy+VH;y++){
+  for(let x=ox;x<ox+VW;x++){
+   if(!inMap(x,y)){s+=' ';continue}
+   const k=x+','+y,t=map[y][x];let ch,c;
+   if(x==f.start[0]&&y==f.start[1]){ch='@';c='you'}
+   else if(mk[k]){ch=mk[k];c='mob'}
+   else if(f.items[k]){ch=f.items[k];c=ICON[ch]}
+   else if(t=='>'){ch='>';c='stairs'}
+   else if(t=='.'){ch='.';c='floor'}
+   else if(t=='+'||t=='L'){ch=t;c='door'}   // the editor shows a locked door as L (in play both look like +)
+   else if(isEdge(x,y)){ch=wallChar(x,y);c='wall'}
+   else{ch='#';c='mem'}
+   s+=`<i class="${c}">${ch}</i>`;
+  }
+  s+='\n';
+ }
+ $('egrid').innerHTML=s;
+}
+function drawEdit(){
+ const f=dungeon[fi];
+ map=f.g;W=f.w;H=f.h;                            // the wall-glyph helpers read these globals
+ ox=Math.max(0,Math.min(W-VW,ox));oy=Math.max(0,Math.min(H-VH,oy));
+ $('ehead').textContent=`FLOOR ${fi+1}/${dungeon.length}  ${W}x${H}  Tool: ${TOOLS.find(t=>t[0]==tool)[1]}`;
+ $('efl').innerHTML=btn('fl',-1,'&lt;','','Previous floor')+btn('fl',1,'&gt;','','Next floor')+btn('add',null,'ADD')+btn('del',null,'DEL')+btn('gen',null,'GEN');
+ $('epan').innerHTML=`<span>PAN</span>`+btn('pan','-1,0','&lt;','','Pan left')+btn('pan','0,-1','^','','Pan up')+btn('pan','0,1','v','','Pan down')+btn('pan','1,0','&gt;','','Pan right')+btn('brush',null,`BRUSH ${brush}`);
+ $('etools').innerHTML=TOOLS.map(([g,n])=>btn('tool',g,E(g),g==tool?'on':'',n)).join('');
+ const cnt=(label,a)=>`<div class="erow"><span>${label}</span><span>${btn(a,-1,'-')} ${f[a]} ${btn(a,1,'+')}</span></div>`;
+ $('eset').hidden=!setupOpen;
+ $('eset').innerHTML=box(`<div class="erow"><span>FLOOR SIZE</span>${btn('size',null,`${f.w}x${f.h}`)}</div>${cnt('RANDOM MOBS','n')}<div class="tools">${Object.keys(MOBS).map(t=>btn('pool',t,t,f.pool.includes(t)?'on':'',MOBS[t].name)).join('')}</div><div class="dim">Random mobs come from the lit glyphs.</div>${cnt('RANDOM POTIONS','pt')}${cnt('RANDOM GOLD','gd')}`,'ebox');
+ $('ecode').hidden=!codeOpen;
+ $('eacts').innerHTML=btn('setup',null,'SETUP',setupOpen?'on':'')+btn('code',null,'CODE',codeOpen?'on':'')+btn('exit',null,'EXIT')+btn('test',null,'TEST')+btn('play',null,'PLAY')+btn('share',null,'SHARE');
+ drawGrid();
+}
+
+// ---- actions: every editor button ends up here as eact(action, value) ----
+function eact(a,v){
+ const f=dungeon[fi],was=armed;armed='';note('');
+ const sure=m=>{if(was==a)return 1;armed=a;note(m);return 0};   // risky actions need a second press
+ if(a=='tool')tool=v;
+ else if(a=='brush')brush=brush==1?3:brush==3?5:1;
+ else if(a=='pan'){const[dx,dy]=v.split(',').map(Number);ox+=dx*(VW>>1);oy+=dy*(VH>>1)}
+ else if(a=='fl'){fi=Math.max(0,Math.min(dungeon.length-1,fi+ +v));centerOn()}
+ else if(a=='add'){
+  if(dungeon.length>=MAX_FLOORS)note(`A dungeon has at most ${MAX_FLOORS} floors.`);
+  else{dungeon.push(newFloor(dungeon.length+1));fi=dungeon.length-1;centerOn();persist()}
+ }
+ else if(a=='del'){
+  if(dungeon.length<2)note('A dungeon needs at least one floor.');
+  else if(sure(`Delete floor ${fi+1}? Press DEL again.`)){dungeon.splice(fi,1);fi=Math.min(fi,dungeon.length-1);centerOn();persist();note('Floor deleted.')}
+ }
+ else if(a=='gen'){
+  if(sure('Replace this floor with a generated one? Press GEN again.')){genLayout(f,fi+1);centerOn();persist();note('Layout generated. Now add mobs and items.')}
+ }
+ else if(a=='setup')setupOpen=!setupOpen;
+ else if(a=='size'){
+  const i=SIZES.findIndex(([w,h])=>w==f.w&&h==f.h),[w,h]=SIZES[(i+1)%SIZES.length];
+  if((w>=f.w&&h>=f.h)||sure('Shrinking crops the floor. Press SIZE again.')){resize(f,w,h);centerOn();persist()}
+ }
+ else if(a=='n'||a=='pt'||a=='gd'){f[a]=Math.max(0,Math.min(a=='n'?30:20,f[a]+ +v));persist()}
+ else if(a=='pool'){f.pool=f.pool.includes(v)?f.pool.replace(v,''):f.pool+v;persist()}
+ else if(a=='code'){codeOpen=!codeOpen;if(codeOpen)$('ecta').value=encode(dungeon)}
+ else if(a=='copy'){$('ecta').value=encode(dungeon);copyTa($('ecta'),note)}
+ else if(a=='load'){
+  try{dungeon=decode($('ecta').value);fi=0;centerOn();persist();note(`Loaded ${dungeon.length} floor${dungeon.length>1?'s':''}.`)}
+  catch(e){note('Invalid code: '+e.message)}
+ }
+ else if(a=='test'){const e=floorError(f);if(e)note(`Floor ${fi+1}: ${e}.`);else startRun(dungeon.slice(0,fi+1),fi+1)}   // this floor is the last one of the run
+ else if(a=='play'){const e=dungeonError(dungeon);if(e)note(e);else startRun(dungeon,1)}
+ else if(a=='share'){const e=dungeonError(dungeon);if(e)note(e);else{persist();cl.from='edit';shareErr()?openCode(shareErr()):openShare()}}
+ else if(a=='exit'){persist();showMenu()}
+ if(mode==EDIT)drawEdit();
+}
+function startRun(floors,first){
+ custom=floors;firstFloor=first;back='edit';
+ show('game');$('sd').value='';init('');
+}
+function showEditor(){mode=EDIT;show('edit');drawEdit()}
+function openEditor(){dungeon=dungeon||[newFloor(1)];fi=Math.min(fi,dungeon.length-1);centerOn();showEditor()}
+function editKey(k){const d=K[k];if(!d||!(d[0]||d[1]))return;ox+=d[0]*(VW>>1);oy+=d[1]*(VH>>1);drawEdit()}   // arrows / WASD pan the view
+
+// ---- editor setup: painting with a finger or mouse, buttons, code box ----
+function paint(e){
+ const r=$('egrid').getBoundingClientRect();if(!r.width||!r.height)return;
+ applyTool(dungeon[fi],ox+Math.floor((e.clientX-r.left)/r.width*VW),oy+Math.floor((e.clientY-r.top)/r.height*VH));
+ drawGrid();
+}
+$('egrid').onpointerdown=e=>{e.preventDefault();painting=1;try{$('egrid').setPointerCapture(e.pointerId)}catch(_){}paint(e)};
+$('egrid').onpointermove=e=>{if(painting)paint(e)};
+$('egrid').onpointerup=$('egrid').onpointercancel=()=>{if(painting){painting=0;persist()}};
+$('egrid').oncontextmenu=e=>e.preventDefault();
+$('ecode').innerHTML=box('<textarea id="ecta" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Dungeon code"></textarea>','ebox')+`<div class="erow">${btn('copy',null,'COPY')}${btn('load',null,'LOAD')}</div><div class="dim">COPY shares this dungeon. To use someone else's, paste their code above and press LOAD.</div>`;
+$('edit').onclick=e=>{const b=e.target.closest('[data-e]');if(b)eact(b.dataset.e,b.dataset.v)};
+
+
+/* ---- 12. COMMUNITY ----
+   OFFICIAL levels ship inside this file. Shared levels live in the artifact database (db capability):
+     levels/<id>              approved and public: {title,desc,thumb,by,fl,sz,t}        only Editors write
+     code/<id>                the level code, fetched when you press PLAY: {code}        only Editors write
+     inbox/<uid>/subs/<id>    a submission: {title,desc,thumb,code,fl,sz,t,st:'pending'|'rejected',why}
+     inbox/<uid>              {t}: tells moderators this player has submissions
+     reports/<uid>            {<levelId>:{r,t}}: what this player reported
+   Only Contributors and above can write; a submission stays private until an Editor approves it (MOD tab).
+   Everything read from the database is untrusted: norm() cleans it and every string is escaped before display. */
+const OFFICIAL=[
+ {"id": "o1", "title": "LABYRINTH", "desc": "A 109x59 maze. One minotaur hunts you. Skeletons of its victims guard the way.", "code": "NADIR1~1,57:0,0,0,:#109/#1.11#1.9#1.1#1.1#1.3#1.7#1.7#1.9#1.3#1.17#1.3#1.7#1.5#1.5#1.4>1#1/#1.1#13.1#1.1#5.1#1.1#1.1#1.1#1.1#1.1#3.1#5.1#1.1#1.1#1.1#3.1#3.1#1.1#1.1#3.1#1.1#3.1#7.1#1.1#1.1#3.1#3.1#3.1#1.1#3.1#1.1#3.1#1/#1.5#1.1#1.3#1.3#1.5#1.5#1.1#1.1#1.1#1.3#1.5#1.1#1.1#1.7#1.1#1.5#1.1#1.1#1.5#1.5#1.1#1.3#1.5#1.1#1.5#1.1#1.1#1.3#1/#1.1#5.1#1.1#1.1#1.1#1.1#7.1#7.1#5.1#1.1#7.1#1.1#5.1#7.1#1.1#3.1#3.1#1.1#3.1#3.1#1.1#5.1#1.1#1.1#7.1#5/#1.9#1.3#1.7#1.7#1.3#1.9#1.3#1.1#1.3#1.3#1.5#1.1#1.3#1.1#1.3#1.5#1.1#1.5#1.3#1.3#1.3#1.5#1/#1.1#3.1#3.1#3.1#1.1#5.1#3.1#3.1#3.1#5.1#3.1#1.1#1.1#1.1#3.1#3.1#1.1#5.1#1.1#1.1#1.1#1.1#7.1#5.1#5.1#3.1#1.1#1.1#5.1#1/#1.3#1.3#1.3#1.1#1.3#1.9#1.3#1.1#1.7#1.1#1.1#1.1#1.3#1.3#1.1#1.3#1.5#1.1#1.3#1.7#1.5#1.3#1.3#1.1#1.1#1.1#1.1#1.1#1.1#1/#1.1#13.1#1.1#9.1#3.1#3.1#5.1#3.1#1.1#3.1#3.1#1.1#3.1#1.1#3.1#9.1#1.1#1.1#1.1#5.1#5.1#1.1#3.1#1.1#1.1#1.1#1/#1.11#1.1#1.1#1.9#1.1#1.1#1.7#1.7#1.1#1.1#1.3#1.1#1.3#1.1#1.1#1.1#1.9#1.1#1.1#1.3#1.5#1.5#1.3#1.3#1.3#1/#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1.1#3.1#1.1#9.1#1.1#5.1#3.1#3.1#1.1#3.1#5.1#1.1#3.1#1.1#1.1#5.1#1.1#3.1#3.1#3.1#1.1#1/#1.1#1.5#1.1#1.1#1.3#1.3#1.1#1.3#1.3#1.5#1.1#1.1#1.1#1.1#1.3#1.7#1.3#1.3#1.1#1.7#1.3#1.1#1.1#1.3#1.3#1.1#1.3#1.1#1.5#1.1#1.1#1/#3.1#5.1#1.1#3.1#3.1#1.1#1.1#5.1#9.1#1.1#1.1#9.1#1.1#1.1#3.1#3.1#1.1#3.1#1.1#5.1#1.1#5.1#1.1#1.1#3.1#3.1#3.1#1.1#1.1#1/#1.5#1.3#1.3#1.3#1.3#1.5#1.7#1.5#1.11#1.1#1.3#1.1#1.1#1.3#1.3#1.1#1.5#1.3#1.1#1.1#1.1#1.3#1.5#1.1#1.3#1.1#1/#1.1#3.1#5.1#5.1#3.1#3.1#1.1#11.1#13.1#1.1#3.1#1.1#1.1#1.1#3.1#3.1#1.1#1.1#1.1#1.1#3.1#1.1#3.1#1.1#7.1#5.1#1/#1.3#1.1#1.3#1.3#1.5#1.3#1.1#1.3#1.7#1.11#1.3#1.3#1.1#1.3#1.3#1.1#1.3#1.3#1.3#1.3#1.1#1.3#1.3#1.9#1.1#1/#1.1#1.1#1.1#3.1#1.1#1.1#5.1#1.1#3.1#3.1#1.1#1.1#1.1#1.1#3.1#3.1#3.1#1.1#5.1#1.1#1.1#5.1#5.1#1.1#9.1#1.1#3.1#3.1#1.1#3.1#3.1#1.1#1/#1.1#1.1#1.1#1.5#1.3#1.1#1.1#1.1#1.1#1.1#1.5#1.3#1.1#1.3#1.1#1.7#1.5#1.1#1.1#1.3#1.5#1.1#1.3#1.5#1.5#1.3#1.1#1.3#1.7#1/#3.1#1.1#3.1#3.1#3.1#1.1#3.1#1.1#1.1#1.1#9.5#5.1#5.1#3.1#1.1#1.1#5.1#1.1#5.1#1.1#9.1#3.1#1.1#3.1#9/#1.7#1.3#1.5#1.1#1.1#1.3#1.9#1.7#1.3#1.5#1.1#1.1#1.7#1.3#1.7#1.9#1.1#1.1#1.1#1.5#1.3#1.3#1/#1.1#1.1#3.1#5.1#1.1#3.1#1.1#3.1#1.1#3.1#1.1#3.1#1.5#1.1#5.1#1.1#1.1#1.1#7.1#9.1#7.1#3.1#1.1#1.1#1.1#7.1#1.1#1.1#1.1#1/#1.1#1.3#1.5#1.1#1.1#1.1#1.7#1.3#1.1#1.11#1.5#1.1#1.1#1.1#1.11#1.7#1.3#1.3#1.1#1.1#1.1#1.11#1.1#1.1#1.1#1/#3.1#3.1#5.1#1.1#1.1#3.1#7.1#1.1#15.1#1.1#1.1#5.5#5.1#1.1#5.1#1.1#1.1#1.1#3.1#1.1#1.1#7.1#7.1#1.1#1/#1.1#1.1#1.7#1.1#1.1#1.1#1.7#1.3#1.1#1.7#1.5#1.1#1.1#1.1#1.1#1.7#1.3#1.7#1.3#1.1#1.1#1.3#1.1#1.7#1.1#1.5#1.1#1.1#1/#1.1#1.1#3.1#5.1#1.1#1.1#1.1#3.1#1.1#1.1#3.1#1.1#1.1#3.1#1.1#7.1#1.1#1.1#1.1#1.5#1.1#3.1#1.1#9.1#1.1#3.1#1.1#7.1#1.5#1.1#1.1#1.1#1/#1.1#1.3#1.7#1.1#1.3#1.3#1.1#1.1#1.1#1.3#1.3#1.1#1.3#1.5#1.3#1.1#1.3#1.3#1.3#1.1#1.7#1.5#1.3#1.3#1.13#1.1#1/#1.1#3.1#1.1#3.1#1.1#5.1#1.1#3.1#3.1#7.1#1.1#1.1#1.1#1.1#1.1#7.1#3.1#1.1#5.1#1.1#1.1#3.1#1.1#5.1#5.1#3.1#3.5#5.1#1/#1.5#1.3#1.1#1.1#1.3#1.3#1.15#1.3#1.5#1.7#1.3#1.5#1.1#1.3#1.3#1.5#1.1#1.1#1.1#1.3#1.1#1.5#1.3#1.1#1.1#1/#5.1#1.1#3.1#1.1#1.1#1.1#31.1#1.1#11.1#3.1#5.1#3.1#1.1#1.1#1.1#1.1#1.1#1.1#1.1#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1/#1.3#1.1#1.3#1.1#1.1#1.1#1.13#1.13#1.3#1.1#1.1#1.3#1.9#1.7#1.1#1.1#1.3#1.5#1.1#1.3#1.3#1.1#1.1#1.1#1.3#1/#1.1#1.1#1.5#3.1#3.1#5.1#5.1#1.1#1.1#1.1#9.1#3.1#5.1#9.1#1.1#1.1#5.1#1.1#3.1#5.1#1.1#5.1#1.1#1.1#1.1#1.1#1.1#3/#1.1#1.9#1.1#1.1#1.7#1.7#1.1#1.1#1.5#1.3#1.1#1.1#1.3#1.13#1.3#1.7#1.5#1.7#1.1#1.1#1.5#1.3#1/#1.1#3.5#1.1#1.1#1.1#1.1#5.1#1.1#7.1#1.1#1.1#3.1#1.1#3.1#1.1#1.1#1.1#11.1#13.1#5.1#1.1#7.1#1.1#3.1#3.1#1.1#1/#1.1#1.3#1.3#1.1#1.5#1.1#1.1#1.3#1.1#1.5#1.3#1.11#1.1#1.11#1.11#1.3#1.5#1.1#1.7#1.3#1.1#1.3#1.1#1/#1.1#1.1#1.1#5.1#1.1#3.1#1.1#1.1#1.1#3.1#1.1#1.1#9.1#9.1#7.1#3.1#3.1#5.1#1.1#1.1#1.1#5.1#1.1#1.1#11.1#1.1#3.1#1/#1.3#1.3#1.1#1.3#1.1#1.5#1.5#1.1#1.9#1.3#1.5#1.1#1.7#1.3#1.3#1.5#1.1#1.1#1.7#1.11#1.3#1.3#1.1#1/#3.1#5.1#1.1#3.1#13.1#1.1#3.1#1.1#5.1#1.1#3.1#1.1#11.1#1.1#1.1#1.1#7.1#3.1#11.1#3.1#1.1#5.1#1.1#1/#1.9#1.13#1.5#1.1#1.1#1.1#1.3#1.5#1.3#1.7#1.3#1.3#1.1#1.3#1.3#1.1#1.13#1.1#1.1#1.3#1.3#1.3#1/#1.1#3.1#1.1#1.1#7.1#5.1#9.1#1.5#7.1#1.1#5.1#1.1#1.1#1.1#5.1#3.1#1.1#1.1#1.1#1.1#5.1#7.1#1.1#5.1#3.1#1.1#1/#1.3#1.3#1.7#1.3#1.11#1.13#1.1#1.3#1.3#1.3#1.1#1.3#1.5#1.5#1.5#1.7#1.3#1.3#1.5#1.1#1/#1.1#3.1#3.5#5.1#3.1#1.1#1.1#1.1#3.1#1.5#3.1#7.1#1.1#5.1#1.1#3.1#5.1#11.1#7.1#1.1#5.1#1.1#7/#1.5#1.11#1.3#1.1#1.1#1.3#1.1#1.1#1.3#1.1#1.1#1.7#1.1#1.3#1.3#1.3#1.3#1.1#1.5#1.7#1.7#1.5#1.7#1.1#1/#5.1#1.1#1.5#7.1#3.1#1.1#3.1#3.1#1.1#1.1#1.1#7.1#1.1#3.1#7.1#1.1#3.1#3.1#9.1#1.1#5.1#13.1#1.1#1/#1.5#1.1#1.1#1.1#1.5#1.3#1.3#1.5#1.3#1.1#1.1#1.3#1.1#1.3#1.1#1.3#1.3#1.1#1.1#1.1#1.1#1.3#1.1#1.3#1.5#1.3#1.1#1.7#1.9#1/#3.1#3.1#3.1#5.1#1.1#9.1#3.1#5.1#1.1#3.1#1.1#5.1#3.1#1.1#1.1#1.1#1.1#1.1#3.1#1.1#1.1#3.1#1.1#5.1#1.1#7.1#1.1#9/#1.3#1.3#1.3#1.5#1.3#1.1#1.3#1.1#1.7#1.1#1.1#1.1#1.1#1.5#1.1#1.3#1.1#1.1#1.3#1.13#1.5#1.1#1.7#1.3#1.3#1.3#1/#5.1#1.1#1.1#5.1#7.1#3.1#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1.1#5.1#1.1#1.1#3.1#1.1#5.1#15.1#1.1#1.1#3.1#9.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#1.1#1.3#1.9#1.3#1.3#1.1#1.1#1.3#1.1#1.3#1.3#1.5#1.3#1.5#1.3#1.5#1.5#1.1#1.9#1.5#1.3#1.1#1/#1.1#1.1#5.1#1.1#1.1#1.1#1.1#3.1#1.1#7.1#1.1#1.1#1.1#1.1#3.1#3.1#3.1#5.1#3.1#1.1#3.1#3.1#1.1#3.1#1.1#1.1#3.1#3.1#1.1#3.1#1.1#3.1#5.1#1/#1.3#1.3#1.1#1.3#1.5#1.1#1.5#1.3#1.1#1.1#1.1#1.1#1.5#1.1#1.3#1.5#1.3#1.1#1.5#1.3#1.1#1.3#1.3#1.3#1.1#1.3#1.5#1.3#1.3#1/#1.1#1.1#1.1#1.1#1.1#1.1#9.1#5.1#5.1#1.1#3.1#1.1#3.1#1.1#1.1#1.1#1.1#11.1#1.1#7.1#1.1#3.1#1.1#5.1#9.1#7.1#1/#1.1#1.3#1.3#1.3#1.5#1.5#1.1#1.5#1.1#1.5#1.1#1.1#1.3#1.1#1.1#1.3#1.7#1.1#1.7#1.1#1.1#1.1#1.1#1.5#1.3#1.3#1.7#1.1#1/#1.1#5.1#1.1#3.1#1.1#1.1#1.1#7.1#1.1#5.1#1.1#5.1#1.1#5.1#3.1#1.1#1.1#1.1#5.1#1.1#1.1#3.1#1.1#1.1#3.1#1.1#5.1#1.1#3.1#1.1#7.1#1/#1.3#1.3#1.3#1.3#1.1#1.3#1.1#1.1#1.1#1.1#1.5#1.3#1.1#1.1#1.3#1.5#1.1#1.1#1.1#1.7#1.1#1.3#1.1#1.5#1.1#1.3#1.3#1.3#1.9#1.1#1/#3.1#1.1#5.1#9.1#1.1#1.1#1.1#3.1#3.1#1.1#1.1#1.1#1.1#5.1#3.1#3.1#1.1#3.1#5.1#3.1#3.1#3.1#1.1#1.1#3.1#11.1#3.1#1.1#1/#1.3#1.3#1.1#1.9#1.5#1.3#1.3#1.3#1.3#1.15#1.3#1.5#1.3#1.3#1.1#1.3#1.1#1.5#1.5#1.3#1.1#1.1#1.1#1.1#1/#1.1#5.1#1.1#1.1#7.1#7.1#5.1#3.1#1.1#1.1#1.1#17.1#5.1#1.1#1.1#7.1#3.1#7.1#3.1#1.1#3.1#1.1#1.1#3/#1.5#1.3#1.13#1.13#1.21#1.5#1.3#1.21#1.3#1.7#1.3#1/#109:s10,41;s12,41;s11,40;s11,42;s6,31;s8,31;s7,30;s7,32;s36,39;s38,39;s37,38;s37,40;s58,23;s60,23;s59,22;s59,24;s40,19;s42,19;s41,18;s41,20;s98,25;s100,25;s99,24;s99,26;M57,29:$11,41;$7,31;$37,39;$59,23;$41,19;$99,25;$5,47;$17,41;$7,47;$9,55;!3,47;!5,23;!25,57;!43,29;!29,49;!21,19;!47,23;!91,19;!69,47;!85,13"},
+ {"id": "o2", "title": "FIRST STEPS", "desc": "Three small floors of rats and goblins. A gentle start.", "code": "NADIR1~4,8:2,1,1,r:#40/#40/#16.9#15/#16.9#4.9#2/#16.9#4.9#2/#2.8#6.9#4.9#2/#2.8#6.22#2/#2.8#6.9#4.9#2/#2.23#4.9#2/#2.8#6.9#4.7>1.1#2/#2.8#6.9#4.9#2/#2.8#10.1#8.9#2/#2.8#10.1#8.9#2/#16.9#4.9#2/#16.9#4.9#2/#16.22#2/#16.9#4.9#2/#16.9#4.9#2/#40/#40:r19,5;r22,7;r18,15:!22,16;$17,3;$33,15~4,16:2,1,2,rg:#40/#40/#2.36#2/#2.33>1.2#2/#2.36#2/#2.36#2/#2.6#11.2#11.6#2/#2.6#11.2#11.6#2/#2.6#6.12#6.6#2/#2.6#6.12#6.6#2/#2.6#6.12#6.6#2/#2.6#6.12#6.6#2/#2.6#24.6#2/#2.6#24.6#2/#2.36#2/#2.36#2/#2.36#2/#2.36#2/#40/#40:g4,3;g34,16;r20,3;r20,16;g17,9:!20,10;$23,9;$16,10~3,10:2,1,2,rg:#44/#44/#2.40#2/#2.40#2/#2.40#2/#2.6#2.4#2.4#2.4#2.4#2.8#2/#2.6#2.4#2.4#2.4#2.4#2.8#2/#2.40#2/#2.40#2/#2.40#2/#2.6#2.4#2.4#2.4#2.4#2.6>1.1#2/#2.6#2.4#2.4#2.4#2.4#2.8#2/#2.40#2/#2.40#2/#2.40#2/#2.6#2.4#2.4#2.4#2.4#2.8#2/#2.6#2.4#2.4#2.4#2.4#2.8#2/#2.40#2/#44/#44:g12,3;g18,16;g28,4;g30,15;o38,10:!6,4;!24,10;$21,3;$11,16"},
+ {"id": "o3", "title": "BONE HALLS", "desc": "The dead do not stay down. Skeleton packs on all three floors.", "code": "NADIR1~3,9:0,2,0,:#50/#50/#50/#50/#10.5#7.5#7.5#11/#10.5#7.5#7.5#11/#10.5#7.5#7.5#11/#12.1#11.1#11.1#13/#2.46#2/#2.44>1.1#2/#2.46#2/#10.5#7.5#7.5#11/#10.5#7.5#7.5#11/#10.5#7.5#7.5#11/#50/#50/#50/#50/#50:s11,5;s13,5;s35,12;s37,12:!23,5;$23,13;$12,12;$36,5~4,4:0,3,0,:#46/#46/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.42#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#6.1#15.1#15.1#7/#6.1#15.1#15.1#7/#6.1#15.1#15.1#7/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.42#2/#2.10#6.10#6.10#2/#2.10#6.10#6.10#2/#2.10#6.10#6.8>1.1#2/#2.10#6.10#6.10#2/#46/#46/#46:s21,4;s23,4;s21,6;s21,15;s23,15;s21,17;s37,15;s39,15;s37,17:!9,6;!25,17;$22,6;$6,17;$38,6~3,13:0,3,0,:#46/#46/#8.29#9/#8.29#9/#8.29#9/#8.29#9/#8.8#3.7#3.8#9/#8.8#3.7#3.8#9/#8.8#3.7#3.8#9/#8.29#9/#2.42#2/#2.42#2/#2.42#2/#2.40>1.1#2/#2.42#2/#2.42#2/#8.29#9/#8.29#9/#8.8#3.7#3.8#9/#8.8#3.7#3.8#9/#8.8#3.7#3.8#9/#8.29#9/#8.29#9/#8.29#9/#46/#46:s22,9;s24,9;s23,10;s22,15;s24,15;s23,16;s33,12;s35,12;s34,13:!14,9;!14,16;!9,12;$20,12;$30,6"},
+ {"id": "o4", "title": "THIEVES' DEN", "desc": "Halflings pick your pockets and gold lies everywhere. Keep it.", "code": "NADIR1~3,19:2,1,3,hg:#44/#44/#44/#2.40#2/#2.1#7.1#7.1#7.1#7.1#5>1.1#2/#2.1#7.1#7.1#1.5#1.1#7.1#6.1#2/#2.1#7.1#7.7#1.1#7.1#6.1#2/#2.1#7.1#7.1#1.5#1.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.40#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.40#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.1#7.1#7.1#7.1#7.1#6.1#2/#2.40#2/#44/#44:h10,3;h26,9;h18,15;h34,19;h34,9;h10,15;g26,3;g10,19:$6,9;$14,9;$22,6;$30,15;$38,15;$38,9;$6,15;!2,9;!41,19~3,11:2,2,4,hg:#46/#46/#2.42#2/#2.42#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.42#2/#2.42#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.42#2/#2.41>1#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.42#2/#2.42#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.4#2.4#2.4#2.4#2.4#2.4#2.6#2/#2.42#2/#2.42#2/#46/#46:h10,3;h16,19;h22,11;h28,3;h34,19;h40,11;h16,7;h34,15;g12,11;g30,11;o40,6:$5,5;$9,13;$15,5;$21,9;$19,15;$27,13;$31,7;$39,13;$39,17;$27,18;!3,18;!24,3~4,12:1,2,4,hg:#46/#46/#46/#46/#46/#46/#14.16#16/#14.16#16/#14.16#16/#14.4#8.4#16/#2.8#4.4#8.4#4.10#2/#2.8#4.4#3.2#3.4#4.10#2/#2.16#3.2#3.15>1.2#2/#2.8#4.4#3.2#3.4#4.10#2/#2.8#4.4#8.4#4.10#2/#14.4#8.4#16/#14.16#16/#14.16#16/#14.16#16/#46/#46/#46/#46/#46:h16,8;h28,8;h16,17;h28,17;h20,7;h26,17;o36,12;o40,11;g38,13:$15,7;$17,7;$19,7;$25,7;$27,7;$29,7;$15,18;$17,18;$27,18;$29,18;$21,12;$22,12;!6,11;!6,13"},
+ {"id": "o5", "title": "THE SPIRAL", "desc": "Three spirals with one way in. Fight your way to the troll.", "code": "NADIR1~1,1:0,0,0,:#15/#1.13#1/#13.1#1/#1.11#1.1#1/#1.1#9.1#1.1#1/#1.1#1.7#1.1#1.1#1/#1.1#1.1#5.1#1.1#1.1#1/#1.1#1.1#1.2>1#1.1#1.1#1.1#1/#1.1#1.1#1.1#3.1#1.1#1.1#1/#1.1#1.1#1.5#1.1#1.1#1/#1.1#1.1#7.1#1.1#1/#1.1#1.9#1.1#1/#1.1#11.1#1/#1.13#1/#15:r13,8;g1,11;r11,5;g3,6:!13,5;!3,3;!5,5;$6,13;$11,7;$8,9~1,1:0,0,0,:#21/#1.19#1/#19.1#1/#1.17#1.1#1/#1.1#15.1#1.1#1/#1.1#1.13#1.1#1.1#1/#1.1#1.1#11.1#1.1#1.1#1/#1.1#1.1#1.9#1.1#1.1#1.1#1/#1.1#1.1#1.1#7.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.5#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1>1.2#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#5.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.7#1.1#1.1#1.1#1/#1.1#1.1#1.1#9.1#1.1#1.1#1/#1.1#1.1#1.11#1.1#1.1#1/#1.1#1.1#13.1#1.1#1/#1.1#1.15#1.1#1/#1.1#17.1#1/#1.19#1/#21:g19,11;r1,17;g16,3;o4,17;g15,9;o9,7:!19,7;!5,3;!3,7;!13,7;$1,12;$3,10;$12,13~1,1:0,0,0,:#27/#1.25#1/#25.1#1/#1.23#1.1#1/#1.1#21.1#1.1#1/#1.1#1.19#1.1#1.1#1/#1.1#1.1#17.1#1.1#1.1#1/#1.1#1.1#1.15#1.1#1.1#1.1#1/#1.1#1.1#1.1#13.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.11#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#9.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.7#1.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#5.1#1.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#1.2>1#1.1#1.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#1.1#3.1#1.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#1.5#1.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.1#7.1#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#1.9#1.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.1#11.1#1.1#1.1#1.1#1/#1.1#1.1#1.1#1.13#1.1#1.1#1.1#1/#1.1#1.1#1.1#15.1#1.1#1.1#1/#1.1#1.1#1.17#1.1#1.1#1/#1.1#1.1#19.1#1.1#1/#1.1#1.21#1.1#1/#1.1#23.1#1/#1.25#1/#27:o25,19;g1,13;o23,13;g3,11;o19,21;o19,7;g15,9;T11,13:!25,10;!8,3;!3,10;!5,10;!17,16;$10,3;$21,17;$16,17"}];
+const TW=30,TH=14;                               // thumbnails: at most 30 columns x 14 rows of plain ASCII
+const cl={tab:'official',view:'list',cur:0,list:[],e:null,lv:[],mine:[],pend:null,reps:null,ready:0,slow:0,err:0,rf:0,rep:0,arm:'',from:'',sh:null,busy:0,code:''};
+let DB=null,U=null,uid=null,canWrite=null,isMod=false,subbed=0;   // db, user, my id, may write shared docs (null = unknown), may moderate
+const names={};
+const clean=s=>typeof s=='string'?s.replace(/[^ -~]/g,''):'';
+const cleanThumb=t=>clean(typeof t=='string'?t.replace(/\n/g,'\u0001'):'').split('\u0001').slice(0,TH).map(r=>clean(r).slice(0,TW)).join('\n');
+const cnote=t=>{$('cmsg').textContent=t};
+const redraw=()=>{if(mode==COMM&&cl.view!='share')drawComm()};
+const errMsg=x=>x&&x.code=='invalid_argument'?'Not allowed: only Contributors can share and only Editors can moderate.':x&&x.code=='quota_exceeded'?'The level database is full. Ask the owner to clear space.':'Could not reach the database. Try again in a moment.';
+const shareErr=()=>!DB?'Sharing needs the Claude app and a signed-in account.':!uid?'Sign in to share levels.':canWrite===false?'Only Contributors can share levels. Ask the owner for access.':'';
+const plural=(n,w)=>`${n} ${w}${n==1?'':'s'}`;
+
+// ---- thumbnails: a picture from your files, or your first floor, turned into ASCII ----
+function autoThumb(f){
+ const cols=Math.min(TW,f.w),rows=Math.max(4,Math.min(TH,Math.round(cols*f.h/f.w/2))),ramp=' .:-=+*#',o=[];
+ for(let r=0;r<rows;r++){
+  let line='';
+  for(let c=0;c<cols;c++){
+   const x0=Math.floor(c*f.w/cols),x1=Math.max(x0+1,Math.floor((c+1)*f.w/cols)),y0=Math.floor(r*f.h/rows),y1=Math.max(y0+1,Math.floor((r+1)*f.h/rows));
+   let n=0,t=0,ch='';
+   for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){t++;if(f.g[y][x]!='#')n++;if(f.g[y][x]=='>')ch='>';else if(!ch&&f.start[0]==x&&f.start[1]==y)ch='@'}
+   line+=ch||ramp[Math.min(7,Math.floor(n/t*8))];
+  }
+  o.push(line.replace(/\s+$/,''));
+ }
+ return o.join('\n');
+}
+async function readImg(file){                    // -> {cols, lum:[0..1 per character]}
+ if(!/^image\//.test(file.type)||file.size>1e7)throw new Error('Pick an image under 10 MB.');
+ const u=URL.createObjectURL(file),im=new Image();
+ try{await new Promise((ok,no)=>{im.onload=ok;im.onerror=()=>no(new Error('That file is not a readable image.'));im.src=u})}finally{URL.revokeObjectURL(u)}
+ const cols=TW,rows=Math.max(4,Math.min(TH,Math.round(cols*(im.naturalHeight||1)/(im.naturalWidth||1)/2)));   // a character is about twice as tall as wide
+ const c=document.createElement('canvas');c.width=cols;c.height=rows;
+ const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,cols,rows);x.drawImage(im,0,0,cols,rows);
+ const d=x.getImageData(0,0,cols,rows).data,lum=[];
+ for(let i=0;i<d.length;i+=4)lum.push((.3*d[i]+.59*d[i+1]+.11*d[i+2])/255);
+ return{cols,lum};
+}
+const ramp=(m,inv)=>{const R=' .:-=+*#%@',o=[];for(let i=0;i<m.lum.length;i+=m.cols)o.push(m.lum.slice(i,i+m.cols).map(v=>R[Math.min(9,Math.floor((inv?1-v:v)*10))]).join('').replace(/\s+$/,''));return o.join('\n')};
+
+// ---- text check: a first filter only. A moderator reads every title, description, thumbnail and floor before it goes public. ----
+const LEET={0:'o',1:'i',3:'e',4:'a',5:'s',7:'t','@':'a','$':'s','!':'i'};
+const rx=(w,end)=>new RegExp('^'+[...w].map(c=>c+'+').join('')+end);   // letters may be stretched: fuuuck
+const BAD_START=['fuck','shit','cunt','nigg','fagg','whore','porn','nazi','hitler','bitch','slut'].map(w=>rx(w,''));   // a word that starts with one of these
+const BAD_WORD=['rape','rapist','dick','cock','pussy','anal','kys','pedo','tits','twat','wank','sex','sexy'].map(w=>rx(w,'$'));   // a word that is one of these
+function textError(raw,what,min){
+ const s=String(raw).trim();
+ if(s.length<min)return`${what} needs at least ${min} characters.`;
+ if(/[^ -~]/.test(s))return`${what}: plain ASCII characters only.`;
+ if(/https?:|www\.|\.(com|net|org|io|gg|ly|me|xyz)\b|@\w|\d{7}/i.test(s))return`${what}: no links, handles or phone numbers.`;
+ const words=s.toLowerCase().replace(/[013457@$!]/g,c=>LEET[c]).split(/[^a-z]+/).filter(Boolean);
+ for(let i=0;i<words.length;i++){                // "f u c k": a run of single letters is read as one word
+  let j=i;while(j<words.length&&words[j].length==1)j++;
+  if(j-i>2){words.push(words.slice(i,j).join(''));i=j-1}
+ }
+ if(words.some(w=>BAD_WORD.some(r=>r.test(w))||BAD_START.some(r=>r.test(w))))return`${what}: please keep it clean.`;
+ return'';
+}
+
+// ---- database: read what is shared, once, as soon as the Community screen first opens ----
+const norm=(d,id,src,u)=>({id,src,uid:u,title:clean(d.title).slice(0,28)||'(untitled)',desc:clean(d.desc).slice(0,80),thumb:cleanThumb(d.thumb),fl:Math.max(0,Math.min(MAX_FLOORS,+d.fl||0)),sz:clean(d.sz).slice(0,9),t:+d.t||0,
+ st:d.st=='rejected'?'rejected':'pending',why:clean(d.why).slice(0,60),code:typeof d.code=='string'?d.code:''});
+async function fetchNames(ids){
+ const need=[...new Set(ids)].filter(i=>i&&!(i in names));
+ if(!need.length||!U)return;
+ need.forEach(i=>{names[i]=''});                // marked first, so a render never asks twice
+ try{const ps=await U.profiles(need);need.forEach(i=>{names[i]=(ps[i]&&ps[i].name)||''});redraw()}catch(e){}
+}
+function subscribe(){
+ if(subbed||!DB)return;subbed=1;
+ const err=()=>{cl.err=1;redraw()};
+ const t=setTimeout(()=>{if(!cl.ready){cl.slow=1;redraw()}},10000);   // the stream may stay silent when the network blocks it
+ DB.collection('levels').orderBy('t','desc').limit(200).onSnapshot(s=>{
+  cl.lv=s.docs.map(d=>{const x=d.data();return norm(x,d.id,'l',typeof x.by=='string'?x.by:'')});
+  cl.ready=1;cl.slow=0;clearTimeout(t);redraw();
+ },err);
+ if(uid)DB.collection('inbox/'+uid+'/subs').onSnapshot(s=>{cl.mine=s.docs.map(d=>norm(d.data(),d.id,'s',uid));redraw()},err);
+}
+// Moderators: every pending submission, and the levels that were reported. The database has no cross-user query, so ask each player who has an inbox.
+async function loadMod(){
+ cl.pend=null;redraw();
+ try{
+  const pend=[],us=await DB.collection('inbox').get();
+  for(const u of us.docs){const q=await DB.collection('inbox/'+u.id+'/subs').where('st','==','pending').get();q.docs.forEach(s=>pend.push(norm(s.data(),s.id,'s',u.id)))}
+  pend.sort((a,b)=>a.t-b.t);
+  const reps={};(await DB.collection('reports').get()).docs.forEach(d=>Object.entries(d.data()).forEach(([k,v])=>{if(v&&typeof v.r=='string')(reps[k]=reps[k]||[]).push({u:d.id,r:clean(v.r).slice(0,12)})}));
+  cl.pend=pend;cl.reps=reps;
+ }catch(x){cl.pend=[];cl.reps={};cnote(errMsg(x))}
+ redraw();
+}
+
+// ---- screens ----
+const TABS=[['official','OFFICIAL'],['comm','COMMUNITY'],['mine','MINE'],['code','CODE']];
+const by=e=>e.src=='o'?'NADIR':uid&&e.uid==uid?'you':names[e.uid]||'a player';
+const tally=a=>Object.entries(a.reduce((o,x)=>(o[x.r]=(o[x.r]||0)+1,o),{})).map(([k,n])=>k+' '+n).join(', ');
+function modList(){return[...(cl.pend||[]),...cl.lv.filter(e=>cl.reps&&cl.reps[e.id]).map(e=>({...e,rc:cl.reps[e.id]}))]}
+function listFor(T){
+ if(T=='official')return OFFICIAL;
+ if(T=='comm')return cl.lv;
+ if(T=='mine')return[...cl.mine.slice().sort((a,b)=>b.t-a.t),...cl.lv.filter(e=>uid&&e.uid==uid)];
+ return modList();
+}
+function drawComm(){
+ $('ctabs').hidden=cl.view!='list';
+ if(cl.view=='list')drawList();else if(cl.view=='detail')drawDetail();else drawReview();
+}
+function drawList(){
+ const T=cl.tab;
+ $('ctabs').innerHTML=(isMod?TABS.concat([['mod','MOD']]):TABS).map(([k,n])=>btn('ctab',k,n,k==T?'on':'')).join('');
+ if(T=='code'){cl.list=[];drawCode();return}
+ cl.list=listFor(T);cl.cur=Math.min(cl.cur,Math.max(0,cl.list.length-1));
+ let msg='';
+ if(T!='official'&&!DB)msg='Shared levels need the Claude app and a signed-in account. The CODE tab works anywhere.';
+ else if(T=='comm'&&cl.err)msg='Could not read the shared levels.';
+ else if(T=='comm'&&!cl.ready)msg=cl.slow?'Cannot reach the database yet. Still trying...':'Loading...';
+ else if(T=='mine'&&!uid)msg='Sign in to see your levels.';
+ else if(T=='mod'&&cl.pend===null)msg='Loading...';
+ else if(!cl.list.length)msg=T=='mine'?'Nothing shared yet. Press SHARE to send your dungeon.':T=='mod'?'Nothing to review.':'No levels here yet.';
+ const row=(e,i)=>{
+  const tag=e.rc?`  [${plural(e.rc.length,'report').toUpperCase()}]`:e.src=='s'?(T=='mod'?'  [PENDING]':e.st=='rejected'?'  [REJECTED]':'  [PENDING]'):T=='mine'?'  [LIVE]':'';
+  return`<button class="cl${i==cl.cur?' cur':''}" data-e="open" data-v="${i}"><b>${i==cl.cur?'&gt; ':'  '}${E(e.title)}</b><span class="dim">${plural(e.fl,'floor')}  ${E(e.sz)}  by ${E(by(e))}${tag}</span></button>`;
+ };
+ $('cbody').innerHTML=box(msg?`<div class="dim">${E(msg)}</div>`:cl.list.map(row).join(''),'ebox');
+ $('cacts').innerHTML=btn('back',null,'BACK')+(T=='mine'?btn('share',null,'SHARE'):'')+(T=='mod'?btn('refresh',null,'REFRESH'):'');
+ fetchNames(cl.list.map(e=>e.uid));
+}
+// CODE tab: needs no database and no account. A level is one line of text, so share it in any chat or post.
+function drawCode(){
+ $('cbody').innerHTML=box('<textarea id="cta" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Level code"></textarea>','ebox')+'<div class="dim">Paste a level code and press PLAY. MY CODE fills in your own dungeon: COPY it and send it to anyone.</div>';
+ $('cta').value=cl.code;$('cta').oninput=()=>{cl.code=$('cta').value};
+ $('cacts').innerHTML=btn('cplay',null,'PLAY')+btn('cmine',null,'MY CODE')+btn('ccopy',null,'COPY')+btn('back',null,'BACK');
+}
+// Sharing online is not possible here (no Claude app, not signed in, not a Contributor): offer the code instead.
+function openCode(why){cl.tab='code';cl.view='list';cl.code=encode(dungeon);showComm();cnote(why+' Press COPY and send the code to friends instead.')}
+function drawDetail(){
+ const e=cl.e,mine=uid&&e.uid==uid;
+ const st=e.src=='s'?(e.st=='rejected'?`<div>REJECTED: ${E(e.why||'no reason given')}. Fix it and share again.</div>`:'<div class="dim">Waiting for a moderator.</div>'):'';
+ $('cbody').innerHTML=box(`<div class="mh">${E(e.title)}</div><div class="dim">${plural(e.fl,'floor')}  ${E(e.sz)}  by ${E(by(e))}</div><pre class="cp">${E(e.thumb)}</pre><div>${E(e.desc)}</div>${st}${e.rc?`<div class="dim">Reports: ${E(tally(e.rc))}</div>`:''}`,'ebox');
+ let b=[];
+ if(cl.rep)b=[btn('report','text','TEXT'),btn('report','floor','FLOOR'),btn('report','broken','BROKEN'),btn('rep',null,'CANCEL')];
+ else{
+  b.push(btn('play',null,'PLAY'));
+  if(e.src=='l'&&!mine&&!isMod&&DB&&uid&&canWrite!==false)b.push(btn('rep',null,'REPORT'));
+  if(isMod&&e.src=='l')b.push(btn('remove',null,'REMOVE'));
+  if(isMod&&e.rc)b.push(btn('dismiss',null,'DISMISS'));
+  if(e.src=='s'&&mine)b.push(btn('del',null,'DELETE'));
+  b.push(btn('back',null,'BACK'));
+ }
+ $('cacts').innerHTML=b.join('');
+ fetchNames([e.uid]);
+}
+// Moderator view of one submission: the text, the thumbnail, any filter flags, and every floor drawn out.
+function previewFloor(f){return f.g.map((r,y)=>r.map((c,x)=>{const m=f.mobs.find(m=>m.x==x&&m.y==y);return m?m.t:f.items[x+','+y]||(f.start[0]==x&&f.start[1]==y?'@':c)}).join('')).join('\n')}
+function drawReview(){
+ const e=cl.e;let fl=null,er='';
+ try{fl=decode(e.code);er=dungeonError(fl)}catch(x){er=x.message}
+ const flags=[textError(e.title,'Title',3),e.desc&&textError(e.desc,'Description',1),er&&'Level: '+er].filter(Boolean);
+ cl.rf=Math.max(0,Math.min((fl?fl.length:1)-1,cl.rf));
+ const f=fl&&fl[cl.rf],fs=f?Math.max(3,Math.min(12,(Math.min(innerWidth,640)-60)/(f.w*.6))):0;
+ $('cbody').innerHTML=box(`<div class="mh">${E(e.title)}</div><div class="dim">${plural(e.fl,'floor')}  ${E(e.sz)}  by ${E(by(e))}</div><pre class="cp">${E(e.thumb)}</pre><div>${E(e.desc)}</div>${flags.map(x=>`<div>!! ${E(x)}</div>`).join('')}${f?`<div class="erow">${btn('rf',-1,'&lt;')}<span>FLOOR ${cl.rf+1}/${fl.length}  ${f.w}x${f.h}</span>${btn('rf',1,'&gt;')}</div><pre class="cf" style="font-size:${fs}px">${E(previewFloor(f))}</pre>`:''}`,'ebox');
+ $('cacts').innerHTML=btn('approve',null,'APPROVE')+btn('play',null,'PLAY')+btn('back',null,'BACK')+btn('rej','Inappropriate text','BAD TEXT')+btn('rej','Inappropriate floor','BAD FLOOR')+btn('rej','Broken or unfair','BROKEN');
+ fetchNames([e.uid]);
+}
+function openShare(){
+ cl.view='share';cl.sh={lum:null,inv:0,thumb:autoThumb(dungeon[0])};
+ mode=COMM;show('comm');subscribe();
+ $('ctabs').hidden=1;
+ const rule=`<div class="rule">${'-'.repeat(40)}</div>`;
+ $('cbody').innerHTML=box(`<div class="dim">TITLE (3-28 characters, plain text)</div><input type="text" id="sti" maxlength="28" autocomplete="off" spellcheck="false" aria-label="Title">${rule}<div class="dim">DESCRIPTION (optional, up to 80)</div><input type="text" id="sde" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Description">${rule}<div class="dim">THUMBNAIL</div><pre class="cp" id="cthumb"></pre><div class="erow">${btn('img',null,'IMAGE')}${btn('inv',null,'INVERT')}${btn('auto',null,'AUTO')}</div><div class="dim">${plural(dungeon.length,'floor')}. IMAGE turns a picture from your files into ASCII. AUTO draws your first floor.</div><input type="file" id="sfile" accept="image/*" hidden>`,'ebox');
+ $('sfile').onchange=async function(){
+  const f=this.files&&this.files[0];this.value='';if(!f)return;
+  try{cl.sh.lum=await readImg(f);cl.sh.inv=0;thumbRedraw();cnote('')}catch(x){cnote(x.message)}
+ };
+ thumbRedraw();
+ $('cacts').innerHTML=btn('submit',null,'SUBMIT')+btn('back',null,'CANCEL');
+ cnote(shareErr()||'A moderator checks every level before it goes public.');
+}
+function thumbRedraw(){if(cl.sh.lum)cl.sh.thumb=ramp(cl.sh.lum,cl.sh.inv);$('cthumb').textContent=cl.sh.thumb}
+function showComm(){mode=COMM;show('comm');subscribe();drawComm()}
+function openComm(){cl.view='list';cl.from='';showComm()}
+function cback(){
+ if(cl.view=='share'){cl.view='list';if(cl.from=='edit')showEditor();else showComm();return}
+ if(cl.view=='list'){if(cl.from=='edit'){cl.from='';showEditor()}else showMenu();return}
+ cl.view='list';cl.rep=0;drawComm();
+}
+
+// ---- actions ----
+async function playEntry(e){
+ let code=e.code;
+ if(!code){
+  cnote('Loading...');
+  try{const s=await DB.doc('code/'+e.id).get();code=s.exists&&typeof s.data().code=='string'?s.data().code:''}catch(x){cnote(errMsg(x));return}
+ }
+ let fl;
+ try{fl=decode(code);const er=dungeonError(fl);if(er)throw new Error(er)}catch(x){cnote('This level is broken: '+x.message);return}
+ custom=fl;firstFloor=1;back='comm';
+ show('game');$('sd').value='';init('');
+}
+async function submit(){
+ if(cl.busy)return;
+ const t=$('sti').value.trim(),d=$('sde').value.trim();
+ const e=shareErr()||textError(t,'Title',3)||(d&&textError(d,'Description',1))||dungeonError(dungeon);
+ if(e){cnote(e);return}
+ if(cl.mine.filter(s=>s.st=='pending').length>=3){cnote('You already have 3 levels waiting for review.');return}
+ const code=encode(dungeon);
+ if(code.length>200000){cnote('That dungeon is too large to share.');return}
+ const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+ cl.busy=1;cnote('Sending...');
+ try{
+  await DB.doc(`inbox/${uid}/subs/${id}`).set({title:t,desc:d,thumb:cl.sh.thumb,code,fl:dungeon.length,sz:dungeon[0].w+'x'+dungeon[0].h,t:Date.now(),st:'pending'});
+  await DB.doc('inbox/'+uid).set({t:Date.now()});
+  cl.tab='mine';cl.view='list';showComm();cnote('Sent. A moderator approves it before others can play it.');
+ }catch(x){cnote(errMsg(x))}
+ cl.busy=0;
+}
+async function report(e,r){
+ try{
+  const ref=DB.doc('reports/'+uid),s=await ref.get(),patch={[e.id]:{r,t:Date.now()}};
+  await(s.exists?ref.update(patch):ref.set(patch));
+  cl.rep=0;drawComm();cnote('Thanks. A moderator will look at it.');
+ }catch(x){cnote(errMsg(x))}
+}
+async function approve(e){
+ try{
+  const fl=decode(e.code),er=dungeonError(fl);if(er){cnote(er);return}
+  await DB.doc('code/'+e.id).set({code:e.code});
+  await DB.doc('levels/'+e.id).set({title:e.title,desc:e.desc,thumb:e.thumb,by:e.uid,fl:fl.length,sz:fl[0].w+'x'+fl[0].h,t:Date.now()});
+  await DB.doc(`inbox/${e.uid}/subs/${e.id}`).delete();
+  cl.pend=cl.pend.filter(x=>x.id!=e.id);cl.view='list';drawComm();cnote('Approved: it is public now.');
+ }catch(x){cnote(errMsg(x))}
+}
+async function reject(e,why){
+ try{
+  await DB.doc(`inbox/${e.uid}/subs/${e.id}`).update({st:'rejected',why});
+  cl.pend=cl.pend.filter(x=>x.id!=e.id);cl.view='list';drawComm();cnote('Rejected: '+why+'.');
+ }catch(x){cnote(errMsg(x))}
+}
+async function dismiss(e){                       // clear every report on this level
+ try{
+  for(const r of e.rc||[]){
+   const ref=DB.doc('reports/'+r.u),s=await ref.get(),o={...(s.exists?s.data():{})};
+   delete o[e.id];
+   await(Object.keys(o).length?ref.set(o):ref.delete());
+  }
+  if(cl.reps)delete cl.reps[e.id];
+  cl.view='list';drawComm();cnote('Reports cleared.');
+ }catch(x){cnote(errMsg(x))}
+}
+async function removeLevel(e){
+ try{
+  await DB.doc('levels/'+e.id).delete();await DB.doc('code/'+e.id).delete();
+  if(e.rc)await dismiss(e);
+  cl.view='list';drawComm();cnote('Removed.');
+ }catch(x){cnote(errMsg(x))}
+}
+async function delSub(e){
+ try{await DB.doc(`inbox/${uid}/subs/${e.id}`).delete();cl.view='list';drawComm();cnote('Deleted.')}catch(x){cnote(errMsg(x))}
+}
+function cact(a,v){
+ const was=cl.arm;cl.arm='';cnote('');
+ const sure=m=>{if(was==a)return 1;cl.arm=a;cnote(m);return 0};
+ if(a=='ctab'){cl.tab=v;cl.cur=0;if(v=='mod'&&cl.pend===null)loadMod()}
+ else if(a=='open'){const e=cl.list[+v];if(!e)return;cl.e=e;cl.view=cl.tab=='mod'&&e.src=='s'?'review':'detail';cl.rf=0;cl.rep=0}
+ else if(a=='play'){playEntry(cl.e);return}
+ else if(a=='rep')cl.rep=!cl.rep;
+ else if(a=='report'){report(cl.e,v);return}
+ else if(a=='remove'){if(sure('Remove this level for everyone? Press REMOVE again.'))removeLevel(cl.e);return}
+ else if(a=='dismiss'){dismiss(cl.e);return}
+ else if(a=='del'){if(sure('Delete this submission? Press DELETE again.'))delSub(cl.e);return}
+ else if(a=='approve'){approve(cl.e);return}
+ else if(a=='rej'){reject(cl.e,v);return}
+ else if(a=='rf')cl.rf+=+v;
+ else if(a=='share'){
+  const e=dungeon?dungeonError(dungeon):'Build a dungeon in the DEPTH EDITOR first.';
+  if(e)cnote(e);else{cl.from='comm';shareErr()?openCode(shareErr()):openShare()}
+  return;
+ }
+ else if(a=='refresh'){loadMod();return}
+ else if(a=='cplay'){
+  const code=cl.code.replace(/\s+/g,'');   // chat apps wrap long lines: spaces are dropped
+  if(code)playEntry({code});else cnote('Paste a level code first.');return;
+ }
+ else if(a=='cmine'){
+  if(!dungeon){cnote('Build a dungeon in the DEPTH EDITOR first.');return}
+  cl.code=encode(dungeon);drawComm();cnote(dungeonError(dungeon)?'Heads up, others cannot play this yet: '+dungeonError(dungeon)+'.':'Your dungeon. Press COPY.');return;
+ }
+ else if(a=='ccopy'){if(cl.code)copyTa($('cta'),cnote);else cnote('Nothing to copy yet. Press MY CODE.');return}
+ else if(a=='submit'){submit();return}
+ else if(a=='img'){$('sfile').click();return}
+ else if(a=='inv'){if(cl.sh.lum){cl.sh.inv=!cl.sh.inv;thumbRedraw()}else cnote('Pick an image first.');return}
+ else if(a=='auto'){cl.sh.lum=null;cl.sh.thumb=autoThumb(dungeon[0]);thumbRedraw();return}
+ else if(a=='back'){cback();return}
+ drawComm();
+}
+function commKey(k){
+ if(k=='Escape'||k=='m'){cback();return}
+ if(cl.view=='share')return;
+ if(cl.view=='list'){
+  const n=cl.list.length,tabs=(isMod?TABS.concat([['mod']]):TABS).map(t=>t[0]);
+  if(k=='ArrowDown'||k=='j'||k=='s')cl.cur=n?(cl.cur+1)%n:0;
+  else if(k=='ArrowUp'||k=='k'||k=='w')cl.cur=n?(cl.cur+n-1)%n:0;
+  else if(k=='ArrowRight'||k=='l'||k=='d'){cact('ctab',tabs[(tabs.indexOf(cl.tab)+1)%tabs.length]);return}
+  else if(k=='ArrowLeft'||k=='h'||k=='a'){cact('ctab',tabs[(tabs.indexOf(cl.tab)+tabs.length-1)%tabs.length]);return}
+  else if(k=='Enter'&&n){cact('open',cl.cur);return}
+  drawComm();
+ }
+ else if(k=='Enter'&&cl.view=='detail')cact('play');
+}
+$('comm').onclick=e=>{const b=e.target.closest('[data-e]');if(b)cact(b.dataset.e,b.dataset.v)};
+OFFICIAL.forEach(o=>{const fl=decode(o.code);Object.assign(o,{src:'o',uid:'',fl:fl.length,sz:fl[0].w+'x'+fl[0].h,thumb:autoThumb(fl[0]),st:'pending',why:''})});
+
+// Capabilities arrive after the page is up (or never, outside the Claude app): the page works without them.
+(async()=>{
+ const use=n=>{try{return window.claude?claude.use(n).catch(()=>null):null}catch(e){return null}};
+ DB=await use('db');U=await use('user');
+ if(U){uid=await U.id();isMod=!!(await U.canEdit());canWrite=await U.can('data.write')}
+ if(mode==COMM)subscribe();
+ redraw();
+})();
+
+dungeon=loadSaved();                             // the dungeon saved in this browser, if any
+fit();showMenu();
+</script>
+
+</body></html>
